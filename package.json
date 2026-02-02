@@ -1,0 +1,12 @@
+{
+  "name": "cg-calendar-firebase-setup",
+  "version": "1.0.0",
+  "description": "Firebase setup script for CG Calendar",
+  "main": "setup_firebase.js",
+  "scripts": {
+    "setup": "node setup_firebase.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  }
+}

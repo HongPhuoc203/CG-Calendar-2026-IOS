@@ -1,0 +1,40 @@
+# Firebase Service Account Key - DO NOT COMMIT!
+serviceAccountKey.json
+*.json
+!package.json
+!pubspec.yaml
+!firebase.json
+!firestore.rules
+!firestore.indexes.json
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Node
+node_modules/
+package-lock.json
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# Generated files
+*.freezed.dart
+*.g.dart
+*.config.dart
+
+# OS
+.DS_Store
+Thumbs.db

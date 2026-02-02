@@ -1,0 +1,52 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "cgcalendar-2026",
+          "appId": "1:1082370212254:android:e7c16f834c70f9a99bd68f",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "cgcalendar-2026",
+          "configurations": {
+            "android": "1:1082370212254:android:e7c16f834c70f9a99bd68f",
+            "ios": "1:1082370212254:ios:a10aa921831fd5529bd68f",
+            "macos": "1:1082370212254:ios:a10aa921831fd5529bd68f",
+            "web": "1:1082370212254:web:ab50e05c529aa0519bd68f",
+            "windows": "1:1082370212254:web:24feb6773515f35b9bd68f"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "database": "(default)",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": []
+    }
+  ],
+  "hosting": {
+    "public": "public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  }
+}
