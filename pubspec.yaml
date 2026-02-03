@@ -41,6 +41,7 @@ dependencies:
   firebase_messaging: ^14.7.9
   cloud_functions: ^4.6.0
   firebase_storage: ^11.6.0
+  flutter_local_notifications: ^18.0.1
   
   # Navigation
   go_router: ^13.2.0
@@ -55,7 +56,7 @@ dependencies:
   
   # Authentication
   google_sign_in: ^6.2.1
-  sign_in_with_apple: ^7.0.1
+  # sign_in_with_apple: ^5.0.0
   
   # Utilities
   uuid: ^4.2.2

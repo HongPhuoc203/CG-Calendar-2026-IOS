@@ -11,16 +11,21 @@ import '../calendar/calendar_screen.dart';
 import '../splash/splash_screen.dart';
 import '../../core/utils/logger.dart';
 
-/// Provider to initialize FCM when user is authenticated
+/// Provider to initialize FCM and Local Notifications when user is authenticated
 final fcmInitializerProvider = FutureProvider.family<void, String?>((ref, userId) async {
   if (userId == null) return;
   
   try {
     final fcmService = ref.read(fcmServiceProvider);
+    final localScheduler = ref.read(localNotificationSchedulerProvider);
     final userRepo = ref.read(userRepositoryProvider);
     
     // Initialize FCM
     await fcmService.initialize();
+    
+    // Initialize Local Notification Scheduler
+    await localScheduler.initialize();
+    logger.i('Local notification scheduler initialized');
     
     // Get token
     final token = await fcmService.getToken();
@@ -31,7 +36,7 @@ final fcmInitializerProvider = FutureProvider.family<void, String?>((ref, userId
       logger.i('FCM token saved for user: $userId');
     }
   } catch (e) {
-    logger.e('Failed to initialize FCM', error: e);
+    logger.e('Failed to initialize FCM/Notifications', error: e);
   }
 });
 

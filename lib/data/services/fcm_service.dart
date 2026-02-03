@@ -1,10 +1,14 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'dart:io' show Platform;
 import '../../core/utils/logger.dart';
 
 /// FCM Service for handling push notifications
 class FCMService {
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+  final FlutterLocalNotificationsPlugin _localNotifications = 
+      FlutterLocalNotificationsPlugin();
   
   String? _fcmToken;
   
@@ -14,7 +18,10 @@ class FCMService {
   /// Initialize FCM
   Future<void> initialize() async {
     try {
-      // Request permission (iOS)
+      // Setup local notifications (Android)
+      await _setupLocalNotifications();
+      
+      // Request permission (iOS & Android 13+)
       await requestPermission();
       
       // Get FCM token
@@ -33,6 +40,44 @@ class FCMService {
       logger.i('FCM initialized successfully');
     } catch (e) {
       logger.e('Failed to initialize FCM', error: e);
+    }
+  }
+  
+  /// Setup local notifications (for Android foreground notifications)
+  Future<void> _setupLocalNotifications() async {
+    if (!kIsWeb && Platform.isAndroid) {
+      // Create notification channel for Android 8.0+
+      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+        'cg_calendar_reminders', // Must match AndroidManifest.xml
+        'CG Calendar Reminders',
+        description: 'Notifications for event reminders',
+        importance: Importance.high,
+        enableVibration: true,
+        playSound: true,
+      );
+      
+      await _localNotifications
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(channel);
+      
+      // Initialize plugin
+      const AndroidInitializationSettings androidSettings = 
+          AndroidInitializationSettings('@mipmap/ic_launcher');
+      
+      const InitializationSettings initSettings = InitializationSettings(
+        android: androidSettings,
+      );
+      
+      await _localNotifications.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: (NotificationResponse response) {
+          logger.i('Local notification tapped: ${response.payload}');
+          // TODO: Handle notification tap
+        },
+      );
+      
+      logger.i('Local notifications initialized');
     }
   }
   
@@ -98,13 +143,44 @@ class FCMService {
     if (message.notification != null) {
       logger.i('Message notification: ${message.notification!.title}');
       
-      // Show in-app notification (can use flutter_local_notifications)
-      // For now, just log
+      // Show local notification on Android (foreground)
+      if (!kIsWeb && Platform.isAndroid) {
+        _showLocalNotification(message);
+      }
+      
+      // Log for debugging
       if (kDebugMode) {
         print('📬 Notification: ${message.notification!.title}');
         print('   ${message.notification!.body}');
       }
     }
+  }
+  
+  /// Show local notification (Android foreground)
+  Future<void> _showLocalNotification(RemoteMessage message) async {
+    final notification = message.notification;
+    if (notification == null) return;
+    
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'cg_calendar_reminders',
+      'CG Calendar Reminders',
+      channelDescription: 'Notifications for event reminders',
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: '@mipmap/ic_launcher',
+      enableVibration: true,
+      playSound: true,
+    );
+    
+    const NotificationDetails details = NotificationDetails(android: androidDetails);
+    
+    await _localNotifications.show(
+      message.hashCode,
+      notification.title,
+      notification.body,
+      details,
+      payload: message.data['eventId'],
+    );
   }
   
   /// Handle message tap (background/terminated)

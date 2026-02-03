@@ -10,9 +10,11 @@ import '../../providers/artists_provider.dart';
 import '../../providers/event_types_provider.dart';
 import '../../providers/repositories_providers.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/services_providers.dart';
 import '../../data/models/reminder_model.dart';
 import '../widgets/reminder_picker.dart';
 import '../../core/utils/number_formatter.dart';
+import '../../core/utils/logger.dart';
 
 /// Create/Edit Event Screen - For creating new events or editing existing ones
 class CreateEditEventScreen extends ConsumerStatefulWidget {
@@ -1176,6 +1178,7 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
 
     try {
       final reminderRepo = ref.read(reminderRepositoryProvider);
+      final localScheduler = ref.read(localNotificationSchedulerProvider);
       final currentUser = ref.read(authStateProvider).value;
       if (currentUser == null) return;
 
@@ -1202,7 +1205,31 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
         );
       }).toList();
 
+      // Save to Firestore
       await reminderRepo.createReminders(reminders);
+      
+      // Schedule local notifications (không cần Cloud Functions!)
+      final event = EventModel(
+        id: eventId,
+        title: _titleController.text,
+        artistIds: _selectedArtistIds,
+        startTime: _startTime,
+        endTime: _endTime,
+        eventTypeId: _selectedEventTypeId!,
+        location: _locationController.text.trim(),
+        notes: _notesController.text.trim(),
+        checklistItems: _checklistItems,
+        createdBy: currentUser.uid,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      
+      await localScheduler.scheduleEventReminders(
+        event: event,
+        reminders: reminders,
+      );
+      
+      logger.i('✅ Scheduled ${reminders.length} local notifications');
     } catch (e) {
       // Show error to user
       if (mounted) {

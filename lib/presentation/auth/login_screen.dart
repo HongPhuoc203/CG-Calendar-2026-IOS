@@ -80,27 +80,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
-  Future<void> _handleAppleLogin() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+  // Future<void> _handleAppleLogin() async {
+  //   setState(() {
+  //     _isLoading = true;
+  //     _errorMessage = null;
+  //   });
 
-    try {
-      final authService = ref.read(authServiceProvider);
-      await authService.signInWithApple();
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = e.toString().replaceAll('AuthFailure: ', '');
-        });
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
+  //   try {
+  //     final authService = ref.read(authServiceProvider);
+  //     await authService.signInWithApple();
+  //   } catch (e) {
+  //     if (mounted) {
+  //       setState(() {
+  //         _errorMessage = e.toString().replaceAll('AuthFailure: ', '');
+  //       });
+  //     }
+  //   } finally {
+  //     if (mounted) {
+  //       setState(() => _isLoading = false);
+  //     }
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -419,7 +419,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           child: _buildSocialButton(
             icon: Icons.apple,
             label: 'Apple',
-            onPressed: _isLoading ? null : _handleAppleLogin,
+            onPressed: _isLoading ? null : _handleGoogleLogin,
           ),
         ),
       ],

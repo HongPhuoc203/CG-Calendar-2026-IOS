@@ -1,6 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+// import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../core/errors/failures.dart';
 
@@ -81,32 +81,32 @@ class AuthService {
   }
 
   /// Sign in with Apple
-  Future<User> signInWithApple() async {
-    try {
-      final appleCredential = await SignInWithApple.getAppleIDCredential(
-        scopes: [
-          AppleIDAuthorizationScopes.email,
-          AppleIDAuthorizationScopes.fullName,
-        ],
-      );
+  // Future<User> signInWithApple() async {
+  //   try {
+  //     final appleCredential = await SignInWithApple.getAppleIDCredential(
+  //       scopes: [
+  //         AppleIDAuthorizationScopes.email,
+  //         AppleIDAuthorizationScopes.fullName,
+  //       ],
+  //     );
 
-      final oauthCredential = OAuthProvider("apple.com").credential(
-        idToken: appleCredential.identityToken,
-        accessToken: appleCredential.authorizationCode,
-      );
+  //     final oauthCredential = OAuthProvider("apple.com").credential(
+  //       idToken: appleCredential.identityToken,
+  //       accessToken: appleCredential.authorizationCode,
+  //     );
 
-      final userCredential = await _auth.signInWithCredential(oauthCredential);
-      if (userCredential.user == null) {
-        throw const AuthFailure('Đăng nhập Apple thất bại');
-      }
+  //     final userCredential = await _auth.signInWithCredential(oauthCredential);
+  //     if (userCredential.user == null) {
+  //       throw const AuthFailure('Đăng nhập Apple thất bại');
+  //     }
 
-      return userCredential.user!;
-    } on FirebaseAuthException catch (e) {
-      throw AuthFailure(_getAuthErrorMessage(e.code));
-    } catch (e) {
-      throw AuthFailure('Lỗi đăng nhập Apple: $e');
-    }
-  }
+  //     return userCredential.user!;
+  //   } on FirebaseAuthException catch (e) {
+  //     throw AuthFailure(_getAuthErrorMessage(e.code));
+  //   } catch (e) {
+  //     throw AuthFailure('Lỗi đăng nhập Apple: $e');
+  //   }
+  // }
 
   /// Sign out
   Future<void> signOut() async {
