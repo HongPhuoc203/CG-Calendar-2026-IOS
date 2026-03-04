@@ -10,6 +10,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/artists_provider.dart';
 import '../../providers/repositories_providers.dart';
 import '../../providers/reminders_provider.dart';
+import '../../providers/events_provider.dart';
 import '../../data/models/reminder_model.dart';
 import '../create_edit_event/create_edit_event_screen.dart';
 import '../widgets/reminder_picker.dart';
@@ -145,6 +146,9 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
       try {
         final eventRepo = ref.read(eventRepositoryProvider);
         await eventRepo.deleteEvent(_currentEvent.id);
+        
+        // Force refresh events list
+        ref.invalidate(eventsStreamProvider);
         
         if (mounted) {
           Navigator.pop(context);

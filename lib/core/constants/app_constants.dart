@@ -10,6 +10,7 @@ class AppConstants {
   static const String eventTypesCollection = 'event_types';
   static const String remindersCollection = 'reminders';
   static const String notificationJobsCollection = 'notification_jobs';
+  static const String notificationsCollection = 'notifications';
   
   // Date Formats
   static const String dateFormat = 'dd/MM/yyyy';

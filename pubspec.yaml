@@ -53,6 +53,7 @@ dependencies:
   table_calendar: ^3.0.9
   intl: ^0.19.0
   timezone: ^0.9.2
+  timeago: ^3.7.0
   
   # Authentication
   google_sign_in: ^6.2.1
@@ -65,10 +66,21 @@ dependencies:
   json_annotation: ^4.8.1
   url_launcher: ^6.2.4
   
+  # Export
+  excel: ^4.0.6
+  path_provider: ^2.1.2
+  share_plus: ^9.0.0
+  
   # UI Components
   flutter_colorpicker: ^1.0.3
   cached_network_image: ^3.3.1
   flutter_svg: ^2.0.9
+  
+  # Charts
+  fl_chart: ^0.69.0
+  
+  # Badges
+  badges: ^3.1.2
 
   logger: ^2.1.0
 

@@ -197,6 +197,29 @@ service cloud.firestore {
     }
 
     // =========================
+    // NOTIFICATIONS
+    // =========================
+
+    match /notifications/{notificationId} {
+      // User can read their own notifications
+      allow read: if isAuthenticated()
+        && resource.data.userId == request.auth.uid;
+
+      // User can update own notification (mark as read only)
+      allow update: if isAuthenticated()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly(['isRead']);
+
+      // User can delete their own notifications
+      allow delete: if isAuthenticated()
+        && resource.data.userId == request.auth.uid;
+
+      // Super Editor or system (Cloud Functions) can create notifications
+      allow create: if isSuperEditor()
+        || (isAuthenticated() && request.resource.data.userId == request.auth.uid);
+    }
+
+    // =========================
     // NOTIFICATION JOBS
     // =========================
 

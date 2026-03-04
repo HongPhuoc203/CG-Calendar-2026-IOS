@@ -7,7 +7,7 @@ import '../../data/models/user_model.dart';
 import '../../providers/repositories_providers.dart';
 import '../auth/login_screen.dart';
 import '../auth/pending_approval_screen.dart';
-import '../calendar/calendar_screen.dart';
+import '../main/main_screen.dart';
 import '../splash/splash_screen.dart';
 import '../../core/utils/logger.dart';
 
@@ -75,7 +75,7 @@ class AuthWrapper extends ConsumerWidget {
               case 'viewer':
               case 'editor':
               case 'super_editor':
-                return const CalendarScreen();
+                return const MainScreen();
               default:
                 return const PendingApprovalScreen();
             }

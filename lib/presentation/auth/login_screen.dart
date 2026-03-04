@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/errors/failures.dart';
 import '../../providers/services_providers.dart';
 import 'register_screen.dart';
 
@@ -48,7 +49,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = e.toString().replaceAll('AuthFailure: ', '');
+          _errorMessage = e is AuthFailure
+              ? e.message
+              : 'Đăng nhập thất bại. Vui lòng thử lại';
         });
       }
     } finally {
@@ -70,7 +73,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = e.toString().replaceAll('AuthFailure: ', '');
+          _errorMessage = e is AuthFailure
+              ? e.message
+              : 'Đăng nhập Google thất bại. Vui lòng thử lại';
         });
       }
     } finally {

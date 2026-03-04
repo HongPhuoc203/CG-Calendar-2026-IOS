@@ -4,6 +4,8 @@ import '../data/repositories/artist_repository.dart';
 import '../data/repositories/event_repository.dart';
 import '../data/repositories/event_type_repository.dart';
 import '../data/repositories/reminder_repository.dart';
+import '../data/repositories/notification_repository.dart';
+import '../data/repositories/revenue_repository.dart';
 import 'services_providers.dart';
 
 /// Provider for UserRepository
@@ -34,5 +36,17 @@ final eventTypeRepositoryProvider = Provider<EventTypeRepository>((ref) {
 final reminderRepositoryProvider = Provider<ReminderRepository>((ref) {
   final firestoreService = ref.watch(firestoreServiceProvider);
   return ReminderRepository(firestoreService);
+});
+
+/// Provider for NotificationRepository
+final notificationRepositoryProvider = Provider<NotificationRepository>((ref) {
+  final firestoreService = ref.watch(firestoreServiceProvider);
+  return NotificationRepository(firestoreService);
+});
+
+/// Provider for RevenueRepository
+final revenueRepositoryProvider = Provider<RevenueRepository>((ref) {
+  final firestoreService = ref.watch(firestoreServiceProvider);
+  return RevenueRepository(firestoreService);
 });
 

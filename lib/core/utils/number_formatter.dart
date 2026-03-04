@@ -10,6 +10,23 @@ class NumberFormatter {
     return _formatter.format(number);
   }
 
+  /// Format number as Vietnamese currency with ₫ symbol
+  static String formatCurrency(num number) {
+    return '₫${format(number)}';
+  }
+
+  /// Format number to compact string (e.g. 1.2tr, 500k)
+  static String formatCompact(num number) {
+    if (number.abs() >= 1000000000) {
+      return '${(number / 1000000000).toStringAsFixed(1)}tỷ';
+    } else if (number.abs() >= 1000000) {
+      return '${(number / 1000000).toStringAsFixed(1)}tr';
+    } else if (number.abs() >= 1000) {
+      return '${(number / 1000).toStringAsFixed(0)}k';
+    }
+    return format(number);
+  }
+
   /// Parse formatted string back to number
   static double parse(String text) {
     // Remove all dots and parse

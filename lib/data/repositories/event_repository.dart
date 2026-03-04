@@ -191,5 +191,125 @@ class EventRepository {
       throw FirestoreFailure('Lỗi cập nhật checklist: $e');
     }
   }
+
+  /// Get urgent events (events with incomplete checklist near deadline)
+  Future<List<EventModel>> getUrgentEvents({
+    required List<String> artistIds,
+    int hoursThreshold = 48, // Events within 48 hours
+  }) async {
+    try {
+      final now = DateTime.now();
+      final threshold = now.add(Duration(hours: hoursThreshold));
+
+      final snapshot = await _firestoreService.getCollection(
+        AppConstants.eventsCollection,
+        queryBuilder: (ref) {
+          Query<Map<String, dynamic>> query = ref;
+
+          // Filter by artistIds if provided
+          if (artistIds.isNotEmpty) {
+            query = query.where('artistIds', arrayContainsAny: artistIds);
+          }
+
+          // Get events starting between now and threshold
+          query = query
+              .where('startTime', isGreaterThanOrEqualTo: now.toIso8601String())
+              .where('startTime', isLessThanOrEqualTo: threshold.toIso8601String());
+
+          return query;
+        },
+      );
+
+      final events = snapshot.docs
+          .map((doc) => EventModelX.fromFirestore(doc.data(), doc.id))
+          .toList();
+
+      // Filter events with incomplete checklist items
+      final urgentEvents = events.where((event) {
+        return event.checklistItems.any((item) => !item.isCompleted);
+      }).toList();
+
+      // Sort by start time (soonest first)
+      urgentEvents.sort((a, b) => a.startTime.compareTo(b.startTime));
+
+      return urgentEvents;
+    } catch (e) {
+      throw FirestoreFailure('Lỗi lấy công việc gấp: $e');
+    }
+  }
+
+  /// Get events for today
+  Future<List<EventModel>> getTodayEvents({List<String>? artistIds}) async {
+    try {
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day);
+      final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+      final snapshot = await _firestoreService.getCollection(
+        AppConstants.eventsCollection,
+        queryBuilder: (ref) {
+          Query<Map<String, dynamic>> query = ref;
+
+          if (artistIds != null && artistIds.isNotEmpty) {
+            query = query.where('artistIds', arrayContainsAny: artistIds);
+          }
+
+          query = query
+              .where('startTime', isGreaterThanOrEqualTo: startOfDay.toIso8601String())
+              .where('startTime', isLessThanOrEqualTo: endOfDay.toIso8601String());
+
+          return query;
+        },
+      );
+
+      final events = snapshot.docs
+          .map((doc) => EventModelX.fromFirestore(doc.data(), doc.id))
+          .toList();
+
+      events.sort((a, b) => a.startTime.compareTo(b.startTime));
+
+      return events;
+    } catch (e) {
+      throw FirestoreFailure('Lỗi lấy sự kiện hôm nay: $e');
+    }
+  }
+
+  /// Get upcoming events (next 7 days)
+  Future<List<EventModel>> getUpcomingEvents({
+    required List<String> artistIds,
+    int days = 7,
+  }) async {
+    try {
+      final now = DateTime.now();
+      final endDate = now.add(Duration(days: days));
+
+      final snapshot = await _firestoreService.getCollection(
+        AppConstants.eventsCollection,
+        queryBuilder: (ref) {
+          Query<Map<String, dynamic>> query = ref;
+
+          if (artistIds.isNotEmpty) {
+            query = query.where('artistIds', arrayContainsAny: artistIds);
+          }
+
+          query = query
+              .where('startTime', isGreaterThanOrEqualTo: now.toIso8601String())
+              .where('startTime', isLessThanOrEqualTo: endDate.toIso8601String());
+
+          return query;
+        },
+      );
+
+      final events = snapshot.docs
+          .map((doc) => EventModelX.fromFirestore(doc.data(), doc.id))
+          .toList();
+
+      events.sort((a, b) => a.startTime.compareTo(b.startTime));
+
+      return events;
+    } catch (e) {
+      throw FirestoreFailure('Lỗi lấy sự kiện sắp tới: $e');
+    }
+  }
 }
 

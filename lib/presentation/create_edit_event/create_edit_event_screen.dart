@@ -6,11 +6,14 @@ import '../../core/constants/app_colors.dart';
 import '../../data/models/event_model.dart';
 import '../../data/models/artist_model.dart';
 import '../../data/models/event_type_model.dart';
+import '../../core/enums/user_role.dart';
+import '../../data/models/user_model.dart';
 import '../../providers/artists_provider.dart';
 import '../../providers/event_types_provider.dart';
 import '../../providers/repositories_providers.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/services_providers.dart';
+import '../../providers/events_provider.dart';
 import '../../data/models/reminder_model.dart';
 import '../widgets/reminder_picker.dart';
 import '../../core/utils/number_formatter.dart';
@@ -465,6 +468,9 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
       // Save reminders
       await _saveReminders(event.id);
       
+      // Force refresh events list (đảm bảo UI cập nhật ngay)
+      ref.invalidate(eventsStreamProvider);
+      
       // Small delay to ensure Firestore commits the data
       if (!_isEditMode && _reminderOptions.isNotEmpty) {
         await Future.delayed(const Duration(milliseconds: 500));
@@ -499,6 +505,35 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
   Widget build(BuildContext context) {
     final artistsAsync = ref.watch(artistsStreamProvider);
     final eventTypesAsync = ref.watch(eventTypesStreamProvider);
+    final userProfileAsync = ref.watch(currentUserProfileProvider);
+    final userProfile = userProfileAsync.value;
+
+    // Auto-select managed artists for editor when creating a new event
+    ref.listen<AsyncValue<UserModel?>>(currentUserProfileProvider, (previous, next) {
+      if (!_isEditMode && _selectedArtistIds.isEmpty) {
+        next.whenData((user) {
+          if (user != null && user.role == UserRole.editor && user.managedArtistIds.isNotEmpty) {
+            setState(() {
+              _selectedArtistIds = List.from(user.managedArtistIds);
+            });
+          }
+        });
+      }
+    });
+
+    // Filter artists based on user role:
+    // - super_editor: sees all artists
+    // - editor: only sees their managed artists
+    final filteredArtistsAsync = artistsAsync.whenData((artists) {
+      if (userProfile == null) return <ArtistModel>[];
+      if (userProfile.role.canManageSystem) return artists;
+      if (userProfile.role == UserRole.editor) {
+        return artists
+            .where((a) => userProfile.managedArtistIds.contains(a.id))
+            .toList();
+      }
+      return <ArtistModel>[];
+    });
 
     return Scaffold(
       backgroundColor: AppColors.backgroundDark,
@@ -603,8 +638,11 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
               // Artists
               _buildSectionTitle('Nghệ sĩ'),
               const SizedBox(height: 16),
-              artistsAsync.when(
-                data: (artists) => _buildArtistsSelector(artists),
+              filteredArtistsAsync.when(
+                data: (artists) => _buildArtistsSelector(
+                  artists,
+                  isLocked: userProfile?.role == UserRole.editor,
+                ),
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (error, _) => Text('Lỗi: $error', style: const TextStyle(color: AppColors.error)),
               ),
@@ -803,40 +841,72 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
     );
   }
 
-  Widget _buildArtistsSelector(List<ArtistModel> artists) {
+  Widget _buildArtistsSelector(List<ArtistModel> artists, {bool isLocked = false}) {
     if (artists.isEmpty) {
       return const Text(
-        'Không có nghệ sĩ nào',
+        'Không có nghệ sĩ nào được gán',
         style: TextStyle(color: AppColors.textDarkSecondary),
       );
     }
 
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: artists.map((artist) {
-        final isSelected = _selectedArtistIds.contains(artist.id);
-        return FilterChip(
-          selected: isSelected,
-          label: Text(artist.name),
-          onSelected: (selected) {
-            setState(() {
-              if (selected) {
-                _selectedArtistIds.add(artist.id);
-              } else {
-                _selectedArtistIds.remove(artist.id);
-              }
-            });
-          },
-          selectedColor: ArtistModelX(artist).color.withValues(alpha: 0.3),
-          checkmarkColor: ArtistModelX(artist).color,
-          side: BorderSide(color: ArtistModelX(artist).color),
-          backgroundColor: AppColors.surfaceDark,
-          labelStyle: TextStyle(
-            color: isSelected ? Colors.white : AppColors.textDarkSecondary,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Hint for editor
+        if (isLocked) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, size: 16, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Bạn chỉ có thể chọn nghệ sĩ được gán cho tài khoản',
+                    style: TextStyle(
+                      color: AppColors.primary.withValues(alpha: 0.9),
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        );
-      }).toList(),
+        ],
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: artists.map((artist) {
+            final isSelected = _selectedArtistIds.contains(artist.id);
+            return FilterChip(
+              selected: isSelected,
+              label: Text(artist.name),
+              onSelected: (selected) {
+                setState(() {
+                  if (selected) {
+                    _selectedArtistIds.add(artist.id);
+                  } else {
+                    _selectedArtistIds.remove(artist.id);
+                  }
+                });
+              },
+              selectedColor: ArtistModelX(artist).color.withValues(alpha: 0.3),
+              checkmarkColor: ArtistModelX(artist).color,
+              side: BorderSide(color: ArtistModelX(artist).color),
+              backgroundColor: AppColors.surfaceDark,
+              labelStyle: TextStyle(
+                color: isSelected ? Colors.white : AppColors.textDarkSecondary,
+              ),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 
@@ -1407,6 +1477,16 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          color: AppColors.primary,
+                          onPressed: () => _editExpense(index),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          tooltip: 'Chỉnh sửa',
+                        ),
+                        const SizedBox(width: 4),
                         IconButton(
                           icon: const Icon(Icons.close, size: 18),
                           color: AppColors.error,
@@ -1417,6 +1497,7 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                           },
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
+                          tooltip: 'Xóa',
                         ),
                       ],
                     ),
@@ -1494,6 +1575,91 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  void _editExpense(int index) {
+    final expense = _expenses[index];
+    showDialog(
+      context: context,
+      builder: (context) {
+        final nameController = TextEditingController(text: expense.name);
+        final amountController = TextEditingController(
+          text: NumberFormatter.format(expense.amount),
+        );
+
+        return AlertDialog(
+          backgroundColor: AppColors.surfaceDark,
+          title: const Text(
+            'Chỉnh sửa chi phí',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Tên chi phí',
+                  labelStyle: TextStyle(color: AppColors.textDarkSecondary),
+                  hintText: 'VD: Thuê quần áo',
+                  hintStyle: TextStyle(color: AppColors.textDarkSecondary),
+                  filled: true,
+                  fillColor: AppColors.backgroundDark,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: amountController,
+                keyboardType: TextInputType.number,
+                inputFormatters: [CurrencyInputFormatter()],
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Số tiền',
+                  labelStyle: TextStyle(color: AppColors.textDarkSecondary),
+                  hintText: '0',
+                  prefixText: '₫ ',
+                  prefixStyle: TextStyle(color: AppColors.textDarkSecondary),
+                  hintStyle: TextStyle(color: AppColors.textDarkSecondary),
+                  filled: true,
+                  fillColor: AppColors.backgroundDark,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Hủy'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (nameController.text.isNotEmpty && amountController.text.isNotEmpty) {
+                  final amount = NumberFormatter.parse(amountController.text);
+                  if (amount > 0) {
+                    setState(() {
+                      _expenses[index] = ExpenseItem(
+                        id: expense.id,
+                        name: nameController.text,
+                        amount: amount,
+                      );
+                    });
+                    Navigator.pop(context);
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+              ),
+              child: const Text('Lưu'),
+            ),
+          ],
+        );
+      },
     );
   }
 

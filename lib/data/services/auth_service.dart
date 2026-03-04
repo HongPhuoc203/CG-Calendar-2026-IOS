@@ -1,7 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 // import 'package:sign_in_with_apple/sign_in_with_apple.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../core/errors/failures.dart';
 
 /// Authentication service for managing user authentication
@@ -139,23 +138,27 @@ class AuthService {
   String _getAuthErrorMessage(String code) {
     switch (code) {
       case 'user-not-found':
-        return 'Không tìm thấy tài khoản';
+        return 'Không tìm thấy tài khoản với email này';
       case 'wrong-password':
         return 'Mật khẩu không đúng';
-      case 'email-already-in-use':
-        return 'Email đã được sử dụng';
+      case 'invalid-credential':
+        return 'Email hoặc mật khẩu không đúng';
       case 'invalid-email':
-        return 'Email không hợp lệ';
+        return 'Địa chỉ email không hợp lệ';
+      case 'email-already-in-use':
+        return 'Email này đã được sử dụng';
       case 'weak-password':
         return 'Mật khẩu quá yếu (tối thiểu 6 ký tự)';
       case 'user-disabled':
-        return 'Tài khoản đã bị vô hiệu hóa';
+        return 'Tài khoản này đã bị vô hiệu hóa';
       case 'too-many-requests':
-        return 'Quá nhiều yêu cầu. Vui lòng thử lại sau';
+        return 'Đăng nhập thất bại quá nhiều lần. Vui lòng thử lại sau';
       case 'network-request-failed':
-        return 'Lỗi kết nối mạng';
+        return 'Lỗi kết nối mạng. Kiểm tra internet và thử lại';
+      case 'operation-not-allowed':
+        return 'Phương thức đăng nhập này chưa được bật';
       default:
-        return 'Lỗi xác thực: $code';
+        return 'Đăng nhập thất bại. Vui lòng thử lại';
     }
   }
 }
