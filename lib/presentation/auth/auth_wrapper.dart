@@ -26,6 +26,9 @@ final fcmInitializerProvider = FutureProvider.family<void, String?>((ref, userId
     // Initialize Local Notification Scheduler
     await localScheduler.initialize();
     logger.i('Local notification scheduler initialized');
+
+    // Request battery optimization exemption (critical for Samsung/MIUI/ColorOS)
+    await localScheduler.requestBatteryOptimizationExemption();
     
     // Get token
     final token = await fcmService.getToken();

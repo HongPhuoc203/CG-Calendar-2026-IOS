@@ -1,11 +1,11 @@
-import 'dart:typed_data';
 import 'package:excel/excel.dart' hide Border;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
+import '../../core/utils/file_saver_stub.dart'
+    if (dart.library.html) '../../core/utils/file_saver_web.dart'
+    if (dart.library.io) '../../core/utils/file_saver_mobile.dart';
 import '../../core/constants/app_colors.dart';
 import '../../data/models/artist_model.dart';
 import '../../data/models/event_model.dart';
@@ -87,13 +87,7 @@ class _ExportRevenueScreenState extends ConsumerState<ExportRevenueScreen> {
       final fileName =
           'DoanhThu_${_dateFormat.format(_fromDate).replaceAll('/', '-')}_den_${_dateFormat.format(_toDate).replaceAll('/', '-')}.xlsx';
 
-      if (kIsWeb) {
-        // Web: Trigger browser download
-        _downloadFileWeb(bytes, fileName);
-      } else {
-        // Mobile/Desktop: Use share
-        _shareFileMobile(bytes, fileName);
-      }
+      await _saveFile(bytes, fileName);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -115,22 +109,9 @@ class _ExportRevenueScreenState extends ConsumerState<ExportRevenueScreen> {
     }
   }
 
-  /// Download file on web
-  void _downloadFileWeb(List<int> bytes, String fileName) {
-    final blob = html.Blob([Uint8List.fromList(bytes)]);
-    final url = html.Url.createObjectUrlFromBlob(blob);
-    final anchor = html.AnchorElement(href: url)
-      ..setAttribute('download', fileName)
-      ..click();
-    html.Url.revokeObjectUrl(url);
-  }
-
-  /// Share file on mobile/desktop
-  Future<void> _shareFileMobile(List<int> bytes, String fileName) async {
-    // This will only be called on mobile/desktop
-    // For now, just download (similar to web)
-    // You can implement actual file sharing here if needed
-    throw UnimplementedError('Share on mobile not yet implemented');
+  /// Lưu / tải file — tự động chọn cách phù hợp theo platform
+  Future<void> _saveFile(List<int> bytes, String fileName) async {
+    await saveFile(bytes, fileName);
   }
 
   // Sheet 1: Chi tiết từng sự kiện

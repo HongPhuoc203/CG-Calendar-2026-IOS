@@ -29,7 +29,7 @@ build/
 *.ipr
 *.iws
 .idea/
-
+.env
 # Generated files
 *.freezed.dart
 *.g.dart

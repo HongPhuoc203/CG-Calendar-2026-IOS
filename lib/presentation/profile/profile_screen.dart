@@ -119,7 +119,7 @@ class ProfileScreen extends ConsumerWidget {
             icon: Icons.notifications_outlined,
             title: 'Cài đặt thông báo',
             onTap: () {
-              // TODO: Navigate to notification settings
+              _showNotificationTestDialog(context, ref);
             },
           ),
 
@@ -279,6 +279,84 @@ class ProfileScreen extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showNotificationTestDialog(BuildContext context, WidgetRef ref) {
+    final scheduler = ref.read(localNotificationSchedulerProvider);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceDark,
+        title: const Text(
+          '🔔 Kiểm tra thông báo',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'Chọn loại test để kiểm tra hệ thống thông báo:',
+          style: TextStyle(color: AppColors.textDarkSecondary),
+        ),
+        actions: [
+          // Test ngay lập tức
+          TextButton.icon(
+            icon: const Icon(Icons.bolt, color: AppColors.primary),
+            label: const Text(
+              'Test ngay',
+              style: TextStyle(color: AppColors.primary),
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await scheduler.sendTestNotification();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✅ Đã gửi test notification! Kiểm tra thanh thông báo.'),
+                    backgroundColor: AppColors.success,
+                    duration: Duration(seconds: 4),
+                  ),
+                );
+              }
+            },
+          ),
+          // Test sau 1 phút
+          TextButton.icon(
+            icon: const Icon(Icons.schedule, color: AppColors.warning),
+            label: const Text(
+              'Test sau 1 phút',
+              style: TextStyle(color: AppColors.warning),
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await scheduler.sendScheduledTestNotification();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('⏰ Đã lên lịch test notification sau 1 phút!'),
+                    backgroundColor: AppColors.warning,
+                    duration: Duration(seconds: 4),
+                  ),
+                );
+              }
+            },
+          ),
+          // Tắt battery optimization
+          TextButton.icon(
+            icon: const Icon(Icons.battery_charging_full, color: Colors.orange),
+            label: const Text(
+              'Tắt Battery Opt.',
+              style: TextStyle(color: Colors.orange),
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await scheduler.requestBatteryOptimizationExemption();
+            },
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Đóng'),
+          ),
+        ],
       ),
     );
   }
