@@ -176,6 +176,11 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
   Widget build(BuildContext context) {
     final artistsAsync = ref.watch(artistsByIdsProvider(_currentEvent.artistIds));
     final canEdit = ref.watch(canEditEventProvider(_currentEvent));
+    final currentUserProfileAsync = ref.watch(currentUserProfileProvider);
+    final isViewer = currentUserProfileAsync.maybeWhen(
+      data: (user) => user?.role == UserRole.viewer,
+      orElse: () => false,
+    );
 
     return Scaffold(
       backgroundColor: AppColors.backgroundDark,
@@ -243,7 +248,7 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
             ],
             
             // Links Section
-            if (_currentEvent.links.isNotEmpty) ...[
+            if (!isViewer && _currentEvent.links.isNotEmpty) ...[
               const Divider(color: AppColors.borderDark, height: 1),
               _buildLinksSection(),
             ],
@@ -261,7 +266,7 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
             // Finance Section
             if (_currentEvent.finance != null) ...[
               const Divider(color: AppColors.borderDark, height: 1),
-              _buildFinanceSection(),
+              _buildFinanceSection(isViewer: isViewer),
             ],
             
             const SizedBox(height: 24),
@@ -965,10 +970,79 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
     }
   }
 
-  Widget _buildFinanceSection() {
+  Widget _buildFinanceSection({required bool isViewer}) {
     final finance = _currentEvent.finance!;
     final totalExpenses = EventFinanceX(finance).totalExpenses;
-    final netIncome = EventFinanceX(finance).netIncome;
+    // Nghệ sĩ nhận 60% doanh thu sự kiện
+    final artistRevenueShare = finance.revenue * 0.6;
+    const artistShareLabel = 'Nghệ sĩ ';
+    // Thu nhập ròng phải trừ luôn phần đã chia cho nghệ sĩ
+    final netIncome = finance.revenue - totalExpenses - artistRevenueShare;
+
+    if (isViewer) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Tài chính',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Artist share only (Viewer)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceDark,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.person_outline,
+                          color: AppColors.primary,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Text(
+                        artistShareLabel,
+                        style: TextStyle(
+                          color: AppColors.textDarkSecondary,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    artistRevenueShare.toVND(),
+                    style: const TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -1023,6 +1097,54 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
                   finance.revenue.toVND(),
                   style: const TextStyle(
                     color: AppColors.success,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Artist share
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceDark,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.person_outline,
+                        color: AppColors.primary,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      artistShareLabel,
+                      style: TextStyle(
+                        color: AppColors.textDarkSecondary,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  artistRevenueShare.toVND(),
+                  style: const TextStyle(
+                    color: AppColors.primary,
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                   ),
@@ -1146,7 +1268,7 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
                     Text(
                       'Thu nhập ròng',
                       style: TextStyle(
-                        color: AppColors.textDarkSecondary.withValues(alpha: 0.9),
+                        color: AppColors.textDarkSecondary.withValues(alpha:0.9),
                         fontSize: 14,
                       ),
                     ),

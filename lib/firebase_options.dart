@@ -60,24 +60,23 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyBA0v4Tq5O80kI_9436_OSAg-TA0-QHHD4',
-    appId: '1:1082370212254:ios:a10aa921831fd5529bd68f',
+    appId: '1:1082370212254:ios:6b4d56ecceb75b5c9bd68f',
     messagingSenderId: '1082370212254',
     projectId: 'cgcalendar-2026',
     storageBucket: 'cgcalendar-2026.firebasestorage.app',
+    iosClientId: '1082370212254-7tc28khqfdr10sfvtislv41vt6njv3t9.apps.googleusercontent.com',
     androidClientId: '1082370212254-rb3a65kmgdbkvktpc92a9r7tbrak2eno.apps.googleusercontent.com',
-    iosClientId: '1082370212254-hnsdhbv9mvakrlmb57cugr81hrfietdb.apps.googleusercontent.com',
-    iosBundleId: 'com.example.cgCalendar',
+    iosBundleId: 'com.cgcalendar.app',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
     apiKey: 'AIzaSyBA0v4Tq5O80kI_9436_OSAg-TA0-QHHD4',
-    appId: '1:1082370212254:ios:a10aa921831fd5529bd68f',
+    appId: '1:1082370212254:ios:6b4d56ecceb75b5c9bd68f',
     messagingSenderId: '1082370212254',
     projectId: 'cgcalendar-2026',
     storageBucket: 'cgcalendar-2026.firebasestorage.app',
-    androidClientId: '1082370212254-rb3a65kmgdbkvktpc92a9r7tbrak2eno.apps.googleusercontent.com',
-    iosClientId: '1082370212254-hnsdhbv9mvakrlmb57cugr81hrfietdb.apps.googleusercontent.com',
-    iosBundleId: 'com.example.cgCalendar',
+    iosClientId: '1082370212254-7tc28khqfdr10sfvtislv41vt6njv3t9.apps.googleusercontent.com',
+    iosBundleId: 'com.cgcalendar.app',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(

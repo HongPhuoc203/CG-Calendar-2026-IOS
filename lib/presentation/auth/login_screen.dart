@@ -151,11 +151,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     // Social Login Buttons
                     const SizedBox(height: 32),
                     // Divider
-                    _buildDivider(),
-                    const SizedBox(height: 32),
-                    // Social Login Buttons
-                    _buildSocialButtons(),
-                    const SizedBox(height: 32),
+                    // _buildDivider(),
+                    // const SizedBox(height: 32),
+                    // // Social Login Buttons
+                    // _buildSocialButtons(),
+                    // const SizedBox(height: 32),
                     
                     // Sign Up Link
                     Row(
@@ -391,45 +391,45 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  Widget _buildDivider() {
-    return Row(
-      children: [
-        const Expanded(child: Divider(color: AppColors.borderDark)),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'Or continue with',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppColors.textDarkSecondary,
-                ),
-          ),
-        ),
-        const Expanded(child: Divider(color: AppColors.borderDark)),
-      ],
-    );
-  }
+  // Widget _buildDivider() {
+  //   return Row(
+  //     children: [
+  //       const Expanded(child: Divider(color: AppColors.borderDark)),
+  //       Padding(
+  //         padding: const EdgeInsets.symmetric(horizontal: 16),
+  //         child: Text(
+  //           'Or continue with',
+  //           style: Theme.of(context).textTheme.bodySmall?.copyWith(
+  //                 color: AppColors.textDarkSecondary,
+  //               ),
+  //         ),
+  //       ),
+  //       const Expanded(child: Divider(color: AppColors.borderDark)),
+  //     ],
+  //   );
+  // }
 
-  Widget _buildSocialButtons() {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildSocialButton(
-            icon: Icons.g_mobiledata,
-            label: 'Google',
-            onPressed: _isLoading ? null : _handleGoogleLogin,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildSocialButton(
-            icon: Icons.apple,
-            label: 'Apple',
-            onPressed: _isLoading ? null : _handleGoogleLogin,
-          ),
-        ),
-      ],
-    );
-  }
+  // Widget _buildSocialButtons() {
+  //   return Row(
+  //     children: [
+  //       Expanded(
+  //         child: _buildSocialButton(
+  //           icon: Icons.g_mobiledata,
+  //           label: 'Google',
+  //           onPressed: _isLoading ? null : _handleGoogleLogin,
+  //         ),
+  //       ),
+  //       const SizedBox(width: 16),
+  //       Expanded(
+  //         child: _buildSocialButton(
+  //           icon: Icons.apple,
+  //           label: 'Apple',
+  //           onPressed: _isLoading ? null : _handleGoogleLogin,
+  //         ),
+  //       ),
+  //     ],
+  //   );
+  // }
 
   Widget _buildSocialButton({
     required IconData icon,

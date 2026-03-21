@@ -26,8 +26,10 @@ class AuthService {
       }
       return credential.user!;
     } on FirebaseAuthException catch (e) {
+      print('[AuthService] signIn FirebaseAuthException code: ${e.code}, message: ${e.message}');
       throw AuthFailure(_getAuthErrorMessage(e.code));
     } catch (e) {
+      print('[AuthService] signIn unknown error: $e');
       throw AuthFailure('Lỗi không xác định: $e');
     }
   }
@@ -41,8 +43,10 @@ class AuthService {
       );
       return credential;
     } on FirebaseAuthException catch (e) {
+      print('[AuthService] signUp FirebaseAuthException code: ${e.code}, message: ${e.message}');
       throw AuthFailure(_getAuthErrorMessage(e.code));
     } catch (e) {
+      print('[AuthService] signUp unknown error: $e');
       throw AuthFailure('Lỗi không xác định: $e');
     }
   }

@@ -7,11 +7,11 @@ enum ReminderUnit {
   String get displayName {
     switch (this) {
       case ReminderUnit.minutes:
-        return 'Phút';
+        return 'phút';
       case ReminderUnit.hours:
-        return 'Giờ';
+        return 'giờ';
       case ReminderUnit.days:
-        return 'Ngày';
+        return 'ngày';
     }
   }
 

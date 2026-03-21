@@ -1316,7 +1316,10 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
 
   Widget _buildFinanceEditor() {
     final totalExpenses = _expenses.fold<double>(0, (sum, item) => sum + item.amount);
-    final netIncome = _revenue - totalExpenses;
+    // Nghệ sĩ nhận 60% doanh thu sự kiện (hiển thị tự động theo doanh thu)
+    final artistRevenueShare = _revenue * 0.6;
+    // Thu nhập ròng phải trừ luôn phần đã chia cho nghệ sĩ
+    final netIncome = _revenue - totalExpenses - artistRevenueShare;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1391,6 +1394,59 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                 )..selection = TextSelection.collapsed(
                     offset: _revenue > 0 ? NumberFormatter.format(_revenue).length : 0,
                   ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Artist share (60% revenue)
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceDark,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.primary.withValues(alpha: 0.35)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.person_outline,
+                  color: AppColors.primary,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Nghệ sĩ ',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      artistRevenueShare.toVND(),
+                      style: const TextStyle(
+                        color: AppColors.primary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

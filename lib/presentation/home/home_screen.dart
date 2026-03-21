@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:badges/badges.dart' as badges;
 import '../../core/constants/app_colors.dart';
+import '../../core/enums/user_role.dart';
 import '../../core/utils/number_formatter.dart';
 import '../../data/models/dashboard_stats_model.dart';
 import '../../providers/dashboard_provider.dart';
-import '../../providers/notifications_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../event_details/event_details_screen.dart';
-import '../notifications/notifications_screen.dart';
+import '../calendar/calendar_screen.dart';
+import '../revenue/revenue_screen.dart';
 import 'widgets/stat_card.dart';
 import 'widgets/section_header.dart';
 import 'widgets/compact_event_card.dart';
@@ -24,8 +24,11 @@ class HomeScreen extends ConsumerWidget {
     final urgentEvents = ref.watch(urgentEventsProvider);
     final todayEvents = ref.watch(todayEventsProvider);
     final revenueStats = ref.watch(revenueStatsProvider);
-    final unreadCount = ref.watch(unreadNotificationsCountProvider);
     final currentUser = ref.watch(currentUserProfileProvider);
+    final isViewer = currentUser.maybeWhen(
+      data: (user) => user?.role == UserRole.viewer,
+      orElse: () => false,
+    );
 
     return Scaffold(
       backgroundColor: AppColors.backgroundDark,
@@ -43,13 +46,13 @@ class HomeScreen extends ConsumerWidget {
             slivers: [
               // Header
               SliverToBoxAdapter(
-                child: _buildHeader(context, currentUser.value, unreadCount),
+                child: _buildHeader(context, currentUser.value),
               ),
 
               // Stats Cards
               SliverToBoxAdapter(
                 child: dashboardStats.when(
-                  data: (stats) => _buildStatsCards(context, stats),
+                  data: (stats) => _buildStatsCards(context, stats, isViewer: isViewer),
                   loading: () => _buildStatsCardsLoading(),
                   error: (error, stack) => _buildError(error.toString()),
                 ),
@@ -76,7 +79,7 @@ class HomeScreen extends ConsumerWidget {
               // Revenue Chart
               SliverToBoxAdapter(
                 child: revenueStats.when(
-                  data: (stats) => _buildRevenueSection(context, stats),
+                  data: (stats) => _buildRevenueSection(context, stats, isViewer: isViewer),
                   loading: () => _buildSectionLoading(),
                   error: (error, stack) => const SizedBox.shrink(),
                 ),
@@ -93,7 +96,7 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildHeader(BuildContext context, dynamic user, AsyncValue<int> unreadCount) {
+  Widget _buildHeader(BuildContext context, dynamic user) {
     return Container(
       padding: const EdgeInsets.all(16),
       child: Row(
@@ -121,76 +124,20 @@ class HomeScreen extends ConsumerWidget {
               ],
             ),
           ),
-          // Notification Bell with Badge
-          unreadCount.when(
-            data: (count) => badges.Badge(
-              position: badges.BadgePosition.topEnd(top: -4, end: -4),
-              showBadge: count > 0,
-              badgeContent: Text(
-                count > 99 ? '99+' : count.toString(),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              badgeStyle: const badges.BadgeStyle(
-                badgeColor: AppColors.error,
-                padding: EdgeInsets.all(6),
-              ),
-              child: IconButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const NotificationsScreen(),
-                    ),
-                  );
-                },
-                icon: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceDark,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.notifications_outlined,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                ),
-              ),
-            ),
-            loading: () => IconButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const NotificationsScreen(),
-                  ),
-                );
-              },
-              icon: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceDark,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.notifications_outlined,
-                  color: Colors.white,
-                  size: 24,
-                ),
-              ),
-            ),
-            error: (_, __) => const SizedBox.shrink(),
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildStatsCards(BuildContext context, DashboardStatsModel stats) {
+  Widget _buildStatsCards(
+    BuildContext context,
+    DashboardStatsModel stats, {
+    bool isViewer = false,
+  }) {
+    final artistShare = stats.totalRevenue * 0.6;
+    final totalExpenses = stats.totalExpenses + artistShare;
+    final netIncome = stats.totalRevenue - totalExpenses;
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -226,28 +173,30 @@ class HomeScreen extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: StatCard(
-                  icon: Icons.trending_up,
-                  title: 'Doanh thu',
-                  value: NumberFormatter.formatCompact(stats.totalRevenue),
-                  iconColor: AppColors.success,
+          if (!isViewer) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: StatCard(
+                    icon: Icons.trending_up,
+                    title: 'Doanh thu',
+                    value: NumberFormatter.formatCompact(stats.totalRevenue),
+                    iconColor: AppColors.success,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: StatCard(
-                  icon: Icons.account_balance_wallet,
-                  title: 'Lợi nhuận',
-                  value: NumberFormatter.formatCompact(stats.netIncome),
-                  iconColor: stats.netIncome >= 0 ? AppColors.success : AppColors.error,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: StatCard(
+                    icon: Icons.account_balance_wallet,
+                    title: 'Lợi nhuận',
+                    value: NumberFormatter.formatCompact(netIncome),
+                    iconColor: netIncome >= 0 ? AppColors.success : AppColors.error,
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -305,7 +254,12 @@ class HomeScreen extends ConsumerWidget {
           icon: Icons.today,
           actionText: 'Xem tất cả',
           onActionTap: () {
-            // Navigate to calendar with today selected
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const CalendarScreen(),
+              ),
+            );
           },
         ),
         const SizedBox(height: 8),
@@ -341,9 +295,7 @@ class HomeScreen extends ConsumerWidget {
           title: 'Việc cần làm gấp',
           icon: Icons.warning_amber_rounded,
           actionText: 'Xem tất cả',
-          onActionTap: () {
-            // Navigate to urgent tasks view
-          },
+          onActionTap: () {},
         ),
         const SizedBox(height: 8),
         Padding(
@@ -369,26 +321,100 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildRevenueSection(BuildContext context, RevenueStatsModel stats) {
+  Widget _buildRevenueSection(
+    BuildContext context,
+    RevenueStatsModel stats, {
+    bool isViewer = false,
+  }) {
+    final artistShare = stats.totalRevenue * 0.6;
+
     return Column(
       children: [
         const SizedBox(height: 16),
         SectionHeader(
-          title: 'Doanh thu tháng này',
+          title: isViewer ? 'Thu nhập tháng này' : 'Doanh thu tháng này',
           icon: Icons.bar_chart,
           actionText: 'Chi tiết',
           onActionTap: () {
-            // Navigate to revenue screen
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const RevenueScreen(),
+              ),
+            );
           },
         ),
         const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: RevenueChart(
-            revenueStats: stats,
-            showExpenses: true,
+        if (isViewer)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceDark,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.borderDark, width: 1),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Thu nhập tháng này',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            const Text(
+                              'Nghệ sĩ nhận (60%)',
+                              style: TextStyle(
+                                color: AppColors.textDarkSecondary,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Text(
+                          NumberFormatter.formatCompact(artistShare),
+                          style: const TextStyle(
+                            color: AppColors.success,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 12),
+                    const Divider(color: AppColors.borderDark, height: 1),
+                    const SizedBox(height: 16),
+
+                    // Mini bar chart
+                    if (stats.revenueByDate.isNotEmpty)
+                      _buildViewerMiniChart(stats)
+                    else
+                      const SizedBox(height: 60),
+                  ],
+                ),
+              ),
+            )
+        else
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: RevenueChart(
+              revenueStats: stats,
+              showExpenses: true,
+            ),
           ),
-        ),
       ],
     );
   }
@@ -427,4 +453,70 @@ class HomeScreen extends ConsumerWidget {
       ),
     );
   }
+
+  Widget _buildViewerMiniChart(RevenueStatsModel stats) {
+    final maxRevenue = stats.revenueByDate
+        .map((e) => e.revenue * 0.6)
+        .reduce((a, b) => a > b ? a : b);
+
+    const maxBarHeight = 70.0;
+
+    return SizedBox(
+      height: 110, // tăng chiều cao để chứa label số tiền
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: stats.revenueByDate.map((data) {
+          final artistAmount = data.revenue * 0.6;
+          final barHeight = maxRevenue > 0
+              ? (artistAmount / maxRevenue) * maxBarHeight
+              : 4.0;
+
+          return Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  // Số tiền bé trên đầu cột
+                  Text(
+                    NumberFormatter.formatCompact(artistAmount),
+                    style: const TextStyle(
+                      color: AppColors.success,
+                      fontSize: 8,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 2),
+
+                  // Bar
+                  Container(
+                    height: barHeight.clamp(4.0, maxBarHeight),
+                    decoration: BoxDecoration(
+                      color: AppColors.success.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+
+                  // Ngày
+                  Text(
+                    '${data.date.day}/${data.date.month}',
+                    style: const TextStyle(
+                      color: AppColors.textDarkSecondary,
+                      fontSize: 9,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
 }

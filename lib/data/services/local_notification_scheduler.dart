@@ -18,13 +18,23 @@ class LocalNotificationScheduler {
   static const String _channelDesc = 'Nhắc nhở sự kiện từ CG Calendar';
 
   Future<void> initialize() async {
-    if (kIsWeb) return; // Local notifications không hỗ trợ web
+    if (kIsWeb) return;
 
     const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
-    const InitializationSettings initSettings = InitializationSettings(
+    // iOS / macOS: yêu cầu quyền khi initialize
+    const DarwinInitializationSettings darwinSettings =
+        DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+
+    final InitializationSettings initSettings = InitializationSettings(
       android: androidSettings,
+      iOS: darwinSettings,
+      macOS: darwinSettings,
     );
 
     await _notifications.initialize(
@@ -32,15 +42,16 @@ class LocalNotificationScheduler {
       onDidReceiveNotificationResponse: _onNotificationTapped,
     );
 
-    // Tạo notification channel với Importance.max (Android 8+)
-    // Cần làm TRƯỚC khi schedule notification để tránh cache channel cũ
-    await _createNotificationChannel();
-
-    // Request notification permission (Android 13+)
-    await _requestPermissions();
-
-    // Check exact alarm permission (Android 12+)
-    await _checkExactAlarmPermission();
+    if (Platform.isAndroid) {
+      // Tạo notification channel (Android 8+)
+      await _createNotificationChannel();
+      // Request notification permission (Android 13+)
+      await _requestPermissions();
+      // Check exact alarm permission (Android 12+)
+      await _checkExactAlarmPermission();
+    } else if (Platform.isIOS || Platform.isMacOS) {
+      await _requestiOSPermissions();
+    }
 
     // Log pending notifications for debugging
     await _logPendingNotifications();
@@ -84,6 +95,85 @@ class LocalNotificationScheduler {
               AndroidFlutterLocalNotificationsPlugin>();
       final granted = await androidPlugin?.requestNotificationsPermission();
       logger.i('Notification permission granted: $granted');
+    }
+  }
+
+  /// Request notification permissions on iOS / macOS. Returns true if granted, false if denied, null if N/A or error.
+  Future<bool?> _requestiOSPermissions() async {
+    try {
+      final iosPlugin = _notifications
+          .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin>();
+      final macPlugin = _notifications
+          .resolvePlatformSpecificImplementation<
+              MacOSFlutterLocalNotificationsPlugin>();
+
+      bool? granted;
+      if (Platform.isIOS) {
+        granted = await iosPlugin?.requestPermissions(
+          alert: true,
+          badge: true,
+          sound: true,
+          critical: false,
+        );
+      } else if (Platform.isMacOS) {
+        granted = await macPlugin?.requestPermissions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+      }
+      logger.i('iOS/macOS notification permission granted: $granted');
+      return granted;
+    } catch (e) {
+      logger.e('iOS permission request failed', error: e);
+      return null;
+    }
+  }
+
+  Future<bool> _ensureDarwinNotificationPermission() async {
+    if (kIsWeb) return false;
+    try {
+      final iosPlugin = _notifications
+          .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin>();
+      final macPlugin = _notifications
+          .resolvePlatformSpecificImplementation<
+              MacOSFlutterLocalNotificationsPlugin>();
+
+      NotificationsEnabledOptions? current;
+      if (Platform.isIOS) {
+        current = await iosPlugin?.checkPermissions();
+      } else if (Platform.isMacOS) {
+        current = await macPlugin?.checkPermissions();
+      } else {
+        return true;
+      }
+
+      final alreadyEnabled = (current?.isAlertEnabled ?? false) ||
+          (current?.isBadgeEnabled ?? false) ||
+          (current?.isSoundEnabled ?? false) ||
+          (current?.isEnabled ?? false) ||
+          (current?.isProvisionalEnabled ?? false);
+      if (alreadyEnabled) return true;
+
+      await _requestiOSPermissions();
+
+      NotificationsEnabledOptions? after;
+      if (Platform.isIOS) {
+        after = await iosPlugin?.checkPermissions();
+      } else if (Platform.isMacOS) {
+        after = await macPlugin?.checkPermissions();
+      }
+
+      return (after?.isAlertEnabled ?? false) ||
+          (after?.isBadgeEnabled ?? false) ||
+          (after?.isSoundEnabled ?? false) ||
+          (after?.isEnabled ?? false) ||
+          (after?.isProvisionalEnabled ?? false);
+    } catch (e) {
+      logger.e('Darwin notification permission check failed', error: e);
+      return false;
     }
   }
 
@@ -151,13 +241,31 @@ class LocalNotificationScheduler {
         channelShowBadge: true,
       );
 
-      final notificationDetails = NotificationDetails(android: androidDetails);
+      const darwinDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+        interruptionLevel: InterruptionLevel.timeSensitive,
+      );
+
+      final notificationDetails = NotificationDetails(
+        android: androidDetails,
+        iOS: darwinDetails,
+        macOS: darwinDetails,
+      );
       final reminderLabel = ReminderModelX(reminder).displayText;
+
+      // Format thời gian sự kiện: "14:30 hôm nay" hoặc "14:30 Thứ 2, 25/03"
+      final eventTime = _formatEventTime(event.startTime);
+      final locationPart = (event.location != null && event.location!.isNotEmpty)
+          ? ' • ${event.location}'
+          : '';
+      final body = 'Bắt đầu $eventTime (còn $reminderLabel)$locationPart';
 
       await _notifications.zonedSchedule(
         reminder.id.hashCode.abs(),
-        '🔔 Nhắc nhở: ${event.title}',
-        '$reminderLabel • ${event.location ?? ""}',
+        event.title,
+        body,
         triggerTime,
         notificationDetails,
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -234,10 +342,14 @@ class LocalNotificationScheduler {
   // Test & Battery Optimization
   // ─────────────────────────────────────────────
 
-  /// Gửi test notification ngay lập tức (để kiểm tra hệ thống có hoạt động không)
-  Future<void> sendTestNotification() async {
-    if (kIsWeb) return;
+  /// Gửi test notification ngay lập tức. Returns true if sent, false if permission denied (e.g. iOS).
+  Future<bool> sendTestNotification() async {
+    if (kIsWeb) return false;
     try {
+      if (Platform.isIOS || Platform.isMacOS) {
+        final canNotify = await _ensureDarwinNotificationPermission();
+        if (!canNotify) return false;
+      }
       final androidDetails = AndroidNotificationDetails(
         _channelId,
         _channelName,
@@ -250,22 +362,34 @@ class LocalNotificationScheduler {
         visibility: NotificationVisibility.public,
         channelShowBadge: true,
       );
+      const darwinDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+        interruptionLevel: InterruptionLevel.timeSensitive,
+      );
       await _notifications.show(
         99999,
         '🔔 Test Notification',
         'Hệ thống thông báo hoạt động bình thường! ✅',
-        NotificationDetails(android: androidDetails),
+        NotificationDetails(android: androidDetails, iOS: darwinDetails, macOS: darwinDetails),
       );
       logger.i('✅ Test notification sent');
+      return true;
     } catch (e) {
       logger.e('❌ Test notification failed', error: e);
+      return false;
     }
   }
 
-  /// Gửi test notification sau 1 phút (kiểm tra scheduled notification)
-  Future<void> sendScheduledTestNotification() async {
-    if (kIsWeb) return;
+  /// Gửi test notification sau 1 phút. Returns true if scheduled, false if permission denied (e.g. iOS).
+  Future<bool> sendScheduledTestNotification() async {
+    if (kIsWeb) return false;
     try {
+      if (Platform.isIOS || Platform.isMacOS) {
+        final canNotify = await _ensureDarwinNotificationPermission();
+        if (!canNotify) return false;
+      }
       final triggerTime = tz.TZDateTime.now(tz.local).add(const Duration(minutes: 1));
       final androidDetails = AndroidNotificationDetails(
         _channelId,
@@ -279,25 +403,34 @@ class LocalNotificationScheduler {
         visibility: NotificationVisibility.public,
         channelShowBadge: true,
       );
+      const darwinDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+        interruptionLevel: InterruptionLevel.timeSensitive,
+      );
       await _notifications.zonedSchedule(
         99998,
         '⏰ Scheduled Test',
         'Scheduled notification hoạt động! Trigger lúc ${triggerTime.hour}:${triggerTime.minute.toString().padLeft(2, '0')}',
         triggerTime,
-        NotificationDetails(android: androidDetails),
+        NotificationDetails(android: androidDetails, iOS: darwinDetails, macOS: darwinDetails),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
       );
       logger.i('✅ Scheduled test notification at $triggerTime');
+      return true;
     } catch (e) {
       logger.e('❌ Scheduled test failed', error: e);
+      return false;
     }
   }
 
-  /// Yêu cầu tắt battery optimization (quan trọng cho Samsung/Xiaomi/OPPO)
+  /// Yêu cầu tắt battery optimization (chỉ Android - Samsung/Xiaomi/OPPO)
   Future<bool> requestBatteryOptimizationExemption() async {
-    if (kIsWeb || !Platform.isAndroid) return true;
+    if (kIsWeb) return true;
+    if (!Platform.isAndroid) return true; // iOS/macOS không cần
     try {
       const channel = MethodChannel('cg_calendar/battery');
       final result = await channel.invokeMethod<bool>('requestIgnoreBatteryOptimization');
@@ -307,5 +440,21 @@ class LocalNotificationScheduler {
       logger.w('Battery optimization request not available: $e');
       return false;
     }
+  }
+
+  String _formatEventTime(DateTime startTime) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final eventDay = DateTime(startTime.year, startTime.month, startTime.day);
+    final timeStr =
+        '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}';
+
+    if (eventDay == today) return '$timeStr hôm nay';
+    if (eventDay == tomorrow) return '$timeStr ngày mai';
+
+    const weekdays = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'CN'];
+    final weekday = weekdays[startTime.weekday - 1];
+    return '$timeStr $weekday, ${startTime.day}/${startTime.month}';
   }
 }

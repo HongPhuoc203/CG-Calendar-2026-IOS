@@ -7,6 +7,7 @@ import '../../providers/services_providers.dart';
 import '../admin/admin_panel_screen.dart';
 import '../export/export_revenue_screen.dart';
 import '../../core/utils/logger.dart';
+import '../helper/help_screen.dart';
 
 /// Profile Screen
 class ProfileScreen extends ConsumerWidget {
@@ -156,9 +157,14 @@ class ProfileScreen extends ConsumerWidget {
 
           _buildMenuItem(
             icon: Icons.help_outline,
-            title: 'Trợ giúp',
+            title: 'Trợ giúp ',
             onTap: () {
-              // TODO: Navigate to help
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const HelpScreen(),
+                ),
+              );
             },
           ),
 
@@ -307,13 +313,22 @@ class ProfileScreen extends ConsumerWidget {
             ),
             onPressed: () async {
               Navigator.pop(ctx);
-              await scheduler.sendTestNotification();
-              if (context.mounted) {
+              final sent = await scheduler.sendTestNotification();
+              if (!context.mounted) return;
+              if (sent) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('✅ Đã gửi test notification! Kiểm tra thanh thông báo.'),
                     backgroundColor: AppColors.success,
                     duration: Duration(seconds: 4),
+                  ),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Vui lòng bật quyền thông báo trong Cài đặt (Thông báo) để test.'),
+                    backgroundColor: AppColors.warning,
+                    duration: Duration(seconds: 5),
                   ),
                 );
               }
@@ -328,13 +343,22 @@ class ProfileScreen extends ConsumerWidget {
             ),
             onPressed: () async {
               Navigator.pop(ctx);
-              await scheduler.sendScheduledTestNotification();
-              if (context.mounted) {
+              final scheduled = await scheduler.sendScheduledTestNotification();
+              if (!context.mounted) return;
+              if (scheduled) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('⏰ Đã lên lịch test notification sau 1 phút!'),
                     backgroundColor: AppColors.warning,
                     duration: Duration(seconds: 4),
+                  ),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Vui lòng bật quyền thông báo trong Cài đặt (Thông báo) để lên lịch.'),
+                    backgroundColor: AppColors.warning,
+                    duration: Duration(seconds: 5),
                   ),
                 );
               }
