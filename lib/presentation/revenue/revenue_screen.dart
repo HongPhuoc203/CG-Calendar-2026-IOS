@@ -566,6 +566,10 @@ class RevenueScreen extends ConsumerWidget {
             else
               ...artistEvents.map((event) {
                 final eventArtistShare = event.finance!.revenue * 0.6;
+                final eventNetAmount =
+                    event.finance!.revenue -
+                    event.finance!.totalExpenses -
+                    eventArtistShare;
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Row(
@@ -592,9 +596,12 @@ class RevenueScreen extends ConsumerWidget {
                         ],
                       ),
                       Text(
-                        NumberFormatter.formatCurrency(eventArtistShare),
-                        style: const TextStyle(
-                          color: AppColors.success,
+                        NumberFormatter.formatCurrency(eventNetAmount),
+                        style: TextStyle(
+                          color:
+                              eventNetAmount >= 0
+                                  ? AppColors.success
+                                  : AppColors.error,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
