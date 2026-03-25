@@ -8,7 +8,7 @@ import '../admin/admin_panel_screen.dart';
 import '../export/export_revenue_screen.dart';
 import '../../core/utils/logger.dart';
 import '../helper/help_screen.dart';
-import 'personal_info_screen.dart';
+import 'personal_infor_screen.dart';
 
 /// Profile Screen
 class ProfileScreen extends ConsumerWidget {
