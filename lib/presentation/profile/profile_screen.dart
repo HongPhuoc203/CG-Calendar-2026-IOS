@@ -8,6 +8,7 @@ import '../admin/admin_panel_screen.dart';
 import '../export/export_revenue_screen.dart';
 import '../../core/utils/logger.dart';
 import '../helper/help_screen.dart';
+import 'personal_info_screen.dart';
 
 /// Profile Screen
 class ProfileScreen extends ConsumerWidget {
@@ -112,7 +113,12 @@ class ProfileScreen extends ConsumerWidget {
             icon: Icons.person_outline,
             title: 'Thông tin cá nhân',
             onTap: () {
-              // TODO: Navigate to profile edit
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const PersonalInfoScreen(),
+                ),
+              );
             },
           ),
 
