@@ -198,40 +198,55 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget _buildHeader() {
     return Column(
       children: [
+        
         Text(
-          'CG Calendar',
+          'Star Base',
           style: Theme.of(context).textTheme.displayLarge?.copyWith(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
               ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
             color: AppColors.surfaceDark,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(30),
             border: Border.all(
               color: AppColors.borderDark,
+              width: 1,
             ),
           ),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.lock_outline,
-                size: 16,
-                color: AppColors.textDarkSecondary,
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.library_music,
+                  size: 20,
+                  color: AppColors.primary,
+                ),
               ),
-              const SizedBox(width: 6),
-              Text(
-                'INTERNAL USE ONLY',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                  'Nền tảng vận hành và quản lý nghệ sĩ toàn diện',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: AppColors.textDarkSecondary,
                       fontWeight: FontWeight.w500,
-                      letterSpacing: 1,
+                      letterSpacing: 0.6,
+                      height: 1.3,
                     ),
+                      textAlign: TextAlign.center,
+                ),
               ),
+              
             ],
           ),
         ),

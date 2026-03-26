@@ -90,7 +90,7 @@ class _SplashScreenState extends State<SplashScreen>
                     child: Column(
                       children: [
                         Text(
-                          'CG Calendar',
+                          'Star Base',
                           style: Theme.of(context)
                               .textTheme
                               .displayLarge
@@ -102,7 +102,7 @@ class _SplashScreenState extends State<SplashScreen>
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Internal Artist Scheduling System',
+                          'Nền tảng vận hành và quản lý nghệ sĩ toàn diện',
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                 color: AppColors.textDarkSecondary,
                                 fontWeight: FontWeight.w500,
@@ -134,7 +134,7 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '© CG MANAGEMENT',
+                    '© Star Base',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: AppColors.textDarkSecondary.withValues(alpha: 0.3),
                           fontSize: 10,
