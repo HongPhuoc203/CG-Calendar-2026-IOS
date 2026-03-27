@@ -89,6 +89,10 @@ dependencies:
   logger: ^2.1.0
   flutter_timezone: ^5.0.1
 
+  # Image Picker
+  image_picker: ^1.1.2
+  http: ^1.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

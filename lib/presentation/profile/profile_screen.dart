@@ -7,12 +7,17 @@ import '../../providers/services_providers.dart';
 import '../admin/admin_panel_screen.dart';
 import '../export/export_revenue_screen.dart';
 import '../../core/utils/logger.dart';
-import '../helper/help_screen.dart';
 import 'personal_infor_screen.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
 
 /// Profile Screen
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
+
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -49,20 +54,47 @@ class ProfileScreen extends ConsumerWidget {
           const SizedBox(height: 24),
 
           // Avatar & Name
-          CircleAvatar(
-            radius: 50,
-            backgroundColor: AppColors.primary.withValues(alpha: 0.2),
-            backgroundImage: user?.photoUrl != null ? NetworkImage(user!.photoUrl) : null,
-            child: user?.photoUrl == null
-                ? Text(
-                    user?.displayName?.substring(0, 1).toUpperCase() ?? 'U',
-                    style: const TextStyle(
+          GestureDetector(
+            onTap: () => _pickAndUploadAvatar(context, ref),
+            child: Stack(
+              children: [
+                CircleAvatar(
+                  radius: 50,
+                  backgroundColor: AppColors.primary.withValues(alpha: 0.2),
+                  backgroundImage: user?.photoUrl != null
+                      ? NetworkImage(user!.photoUrl)
+                      : null,
+                  child: user?.photoUrl == null
+                      ? Text(
+                          user?.displayName?.substring(0, 1).toUpperCase() ?? 'U',
+                          style: const TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 40,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        )
+                      : null,
+                ),
+
+                // Icon edit
+                Positioned(
+                  bottom: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: const BoxDecoration(
                       color: AppColors.primary,
-                      fontSize: 40,
-                      fontWeight: FontWeight.bold,
+                      shape: BoxShape.circle,
                     ),
-                  )
-                : null,
+                    child: const Icon(
+                      Icons.camera_alt,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 16),
 
@@ -163,14 +195,9 @@ class ProfileScreen extends ConsumerWidget {
 
           _buildMenuItem(
             icon: Icons.help_outline,
-            title: 'Trợ giúp ',
+            title: 'Trợ giúp',
             onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const HelpScreen(),
-                ),
-              );
+              // TODO: Navigate to help
             },
           ),
 
@@ -210,14 +237,7 @@ class ProfileScreen extends ConsumerWidget {
 
           const SizedBox(height: 32),
 
-          // Version
-          Text(
-            'Phiên bản 1.0.0',
-            style: TextStyle(
-              color: AppColors.textDarkSecondary.withValues(alpha: 0.5),
-              fontSize: 12,
-            ),
-          ),
+          
         ],
       ),
     );
@@ -319,22 +339,13 @@ class ProfileScreen extends ConsumerWidget {
             ),
             onPressed: () async {
               Navigator.pop(ctx);
-              final sent = await scheduler.sendTestNotification();
-              if (!context.mounted) return;
-              if (sent) {
+              await scheduler.sendTestNotification();
+              if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('✅ Đã gửi test notification! Kiểm tra thanh thông báo.'),
                     backgroundColor: AppColors.success,
                     duration: Duration(seconds: 4),
-                  ),
-                );
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Vui lòng bật quyền thông báo trong Cài đặt (Thông báo) để test.'),
-                    backgroundColor: AppColors.warning,
-                    duration: Duration(seconds: 5),
                   ),
                 );
               }
@@ -349,22 +360,13 @@ class ProfileScreen extends ConsumerWidget {
             ),
             onPressed: () async {
               Navigator.pop(ctx);
-              final scheduled = await scheduler.sendScheduledTestNotification();
-              if (!context.mounted) return;
-              if (scheduled) {
+              await scheduler.sendScheduledTestNotification();
+              if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('⏰ Đã lên lịch test notification sau 1 phút!'),
                     backgroundColor: AppColors.warning,
                     duration: Duration(seconds: 4),
-                  ),
-                );
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Vui lòng bật quyền thông báo trong Cài đặt (Thông báo) để lên lịch.'),
-                    backgroundColor: AppColors.warning,
-                    duration: Duration(seconds: 5),
                   ),
                 );
               }
@@ -397,11 +399,11 @@ class ProfileScreen extends ConsumerWidget {
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surfaceDark,
         title: const Text(
-          'CG Calendar',
+          'Starbase',
           style: TextStyle(color: Colors.white),
         ),
         content: const Text(
-          'Ứng dụng quản lý lịch trình công việc và doanh thu cho nghệ sĩ.\n\nPhiên bản 1.0.0',
+          'Nền tảng vận hành và quản lý nghệ sĩ toàn diện',
           style: TextStyle(color: AppColors.textDarkSecondary),
         ),
         actions: [
@@ -439,4 +441,94 @@ class ProfileScreen extends ConsumerWidget {
       }
     }
   }
+
+  Future<void> _pickAndUploadAvatar(
+      BuildContext context,
+      WidgetRef ref,
+    ) async {
+    try {
+      final picker = ImagePicker();
+
+      final pickedFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 70,
+        maxWidth: 500,
+      );
+
+      if (pickedFile == null) return;
+
+      final file = File(pickedFile.path);
+
+      // Loading
+      if (context.mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const Center(
+            child: CircularProgressIndicator(),
+          ),
+        );
+      }
+
+      // Upload
+      final imageUrl = await _uploadAvatarToCloudinary(file);
+
+      Navigator.pop(context); // close loading
+
+      if (imageUrl == null) {
+        throw Exception('Upload thất bại');
+      }
+
+      // 👉 Lưu Firestore (tuỳ bạn đang dùng service nào)
+      final authService = ref.read(authServiceProvider);
+      await authService.updatePhotoUrl(imageUrl);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Cập nhật avatar thành công'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      logger.e('Upload avatar error', error: e);
+
+      if (context.mounted) {
+        Navigator.pop(context); // đảm bảo đóng loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi upload: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<String?> _uploadAvatarToCloudinary(File imageFile) async {
+    const cloudName = 'dfo1qc9wj';
+    const uploadPreset = 'avatar_Starbase';
+
+    final url = Uri.parse(
+      'https://api.cloudinary.com/v1_1/$cloudName/image/upload',
+    );
+
+    final request = http.MultipartRequest('POST', url)
+      ..fields['upload_preset'] = uploadPreset
+      ..files.add(
+        await http.MultipartFile.fromPath('file', imageFile.path),
+      );
+
+    final response = await request.send();
+
+    if (response.statusCode == 200) {
+      final resData = await response.stream.bytesToString();
+      final data = json.decode(resData);
+      return data['secure_url'];
+    } else {
+      return null;
+    }
+  }
+  
 }

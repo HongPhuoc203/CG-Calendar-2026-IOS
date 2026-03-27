@@ -51,7 +51,7 @@ class MyApp extends ConsumerWidget {
     final theme = ref.watch(themeProvider);
     
     return MaterialApp(
-      title: 'CG Calendar',
+      title: 'Starbase',
       theme: theme,
       debugShowCheckedModeBanner: false,
       

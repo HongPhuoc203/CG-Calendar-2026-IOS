@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 // import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../../core/errors/failures.dart';
 
@@ -51,37 +52,37 @@ class AuthService {
     }
   }
 
-  /// Sign in with Google
-  Future<User> signInWithGoogle() async {
-    try {
-      // Lazy initialize GoogleSignIn
-      _googleSignIn ??= GoogleSignIn();
+  // /// Sign in with Google
+  // Future<User> signInWithGoogle() async {
+  //   try {
+  //     // Lazy initialize GoogleSignIn
+  //     _googleSignIn ??= GoogleSignIn();
       
-      final GoogleSignInAccount? googleUser = await _googleSignIn!.signIn();
-      if (googleUser == null) {
-        throw const AuthFailure('Đăng nhập Google bị hủy');
-      }
+  //     final GoogleSignInAccount? googleUser = await _googleSignIn!.signIn();
+  //     if (googleUser == null) {
+  //       throw const AuthFailure('Đăng nhập Google bị hủy');
+  //     }
 
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
+  //     final GoogleSignInAuthentication googleAuth =
+  //         await googleUser.authentication;
 
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
+  //     final credential = GoogleAuthProvider.credential(
+  //       accessToken: googleAuth.accessToken,
+  //       idToken: googleAuth.idToken,
+  //     );
 
-      final userCredential = await _auth.signInWithCredential(credential);
-      if (userCredential.user == null) {
-        throw const AuthFailure('Đăng nhập Google thất bại');
-      }
+  //     final userCredential = await _auth.signInWithCredential(credential);
+  //     if (userCredential.user == null) {
+  //       throw const AuthFailure('Đăng nhập Google thất bại');
+  //     }
 
-      return userCredential.user!;
-    } on FirebaseAuthException catch (e) {
-      throw AuthFailure(_getAuthErrorMessage(e.code));
-    } catch (e) {
-      throw AuthFailure('Lỗi đăng nhập Google: $e');
-    }
-  }
+  //     return userCredential.user!;
+  //   } on FirebaseAuthException catch (e) {
+  //     throw AuthFailure(_getAuthErrorMessage(e.code));
+  //   } catch (e) {
+  //     throw AuthFailure('Lỗi đăng nhập Google: $e');
+  //   }
+  // }
 
   /// Sign in with Apple
   // Future<User> signInWithApple() async {
@@ -137,6 +138,29 @@ class AuthService {
       throw AuthFailure('Lỗi gửi email: $e');
     }
   }
+
+  /// Update current user's avatar photoUrl in Firestore
+  Future<void> updatePhotoUrl(String photoUrl) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw const AuthFailure('Không tìm thấy người dùng hiện tại');
+    }
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .update({
+        'photoUrl': photoUrl,
+        'updatedAt': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      throw AuthFailure('Lỗi cập nhật ảnh đại diện: $e');
+    }
+  }
+
+
+
 
   /// Get user-friendly error messages
   String _getAuthErrorMessage(String code) {

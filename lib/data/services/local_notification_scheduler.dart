@@ -256,7 +256,8 @@ class LocalNotificationScheduler {
       final reminderLabel = ReminderModelX(reminder).displayText;
 
       // Format thời gian sự kiện: "14:30 hôm nay" hoặc "14:30 Thứ 2, 25/03"
-      final eventTime = _formatEventTime(event.startTime);
+     // final eventTime = _formatEventTime(event.startTime);
+      final eventTime = '${event.startTime.hour.toString().padLeft(2, '0')}:${event.startTime.minute.toString().padLeft(2, '0')}';
       final locationPart = (event.location != null && event.location!.isNotEmpty)
           ? ' • ${event.location}'
           : '';
