@@ -29,6 +29,10 @@ class HomeScreen extends ConsumerWidget {
       data: (user) => user?.role == UserRole.viewer,
       orElse: () => false,
     );
+    final isEditor = currentUser.maybeWhen(
+      data: (user) => user?.role == UserRole.editor,
+      orElse: () => false,
+    );
 
     return Scaffold(
       backgroundColor: AppColors.backgroundDark,
@@ -52,7 +56,12 @@ class HomeScreen extends ConsumerWidget {
               // Stats Cards
               SliverToBoxAdapter(
                 child: dashboardStats.when(
-                  data: (stats) => _buildStatsCards(context, stats, isViewer: isViewer),
+                  data: (stats) => _buildStatsCards(
+                    context,
+                    stats,
+                    isViewer: isViewer,
+                    isEditor: isEditor,
+                  ),
                   loading: () => _buildStatsCardsLoading(),
                   error: (error, stack) => _buildError(error.toString()),
                 ),
@@ -76,13 +85,19 @@ class HomeScreen extends ConsumerWidget {
                 ),
               ),
 
-              // Revenue Chart
+              // Revenue Chart (hidden for Editor)
               SliverToBoxAdapter(
-                child: revenueStats.when(
-                  data: (stats) => _buildRevenueSection(context, stats, isViewer: isViewer),
-                  loading: () => _buildSectionLoading(),
-                  error: (error, stack) => const SizedBox.shrink(),
-                ),
+                child: isEditor
+                    ? const SizedBox.shrink()
+                    : revenueStats.when(
+                        data: (stats) => _buildRevenueSection(
+                          context,
+                          stats,
+                          isViewer: isViewer,
+                        ),
+                        loading: () => _buildSectionLoading(),
+                        error: (error, stack) => const SizedBox.shrink(),
+                      ),
               ),
 
               // Bottom padding
@@ -133,6 +148,7 @@ class HomeScreen extends ConsumerWidget {
     BuildContext context,
     DashboardStatsModel stats, {
     bool isViewer = false,
+    bool isEditor = false,
   }) {
     final artistShare = stats.totalRevenue * 0.6;
     final totalExpenses = stats.totalExpenses + artistShare;
@@ -173,7 +189,7 @@ class HomeScreen extends ConsumerWidget {
               ),
             ],
           ),
-          if (!isViewer) ...[
+          if (!isViewer && !isEditor) ...[
             const SizedBox(height: 12),
             Row(
               children: [
