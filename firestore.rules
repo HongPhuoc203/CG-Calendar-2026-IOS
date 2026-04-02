@@ -99,11 +99,13 @@ service cloud.firestore {
 
     match /users/{userId} {
 
-      // Current user reads own profile
-      allow read: if isAuthenticated() && request.auth.uid == userId;
+      // Any active non-pending user can read all user documents.
+      // Required so that editors/viewers can call getAllActiveUsers()
+      // to compute notification recipientUserIds when creating reminders.
+      allow read: if isActive() && currentUser().role != 'pending';
 
-      // Super Editor can read all users
-      allow read: if isSuperEditor();
+      // Unauthenticated or pending users can still read their own profile
+      allow read: if isAuthenticated() && request.auth.uid == userId;
 
       // First-time creation: pending user
       allow create: if isAuthenticated()
@@ -118,10 +120,12 @@ service cloud.firestore {
       // Super Editor can update users (approve, set role, artistId, managedArtistIds)
       allow update: if isSuperEditor();
 
-      // User can update own fcmToken + updatedAt only
+      // User can update own FCM tokens + avatar only
+      // Includes both legacy fcmToken (string) and new fcmTokens (array)
       allow update: if isAuthenticated()
         && request.auth.uid == userId
-        && request.resource.data.diff(resource.data).changedKeys().hasOnly(['fcmToken', 'updatedAt']);
+        && request.resource.data.diff(resource.data).changedKeys()
+           .hasOnly(['fcmToken', 'fcmTokens', 'updatedAt', 'photoUrl']);
 
       // Never allow delete from client
       allow delete: if false;

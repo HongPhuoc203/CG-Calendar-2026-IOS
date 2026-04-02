@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
 import '../services/firestore_service.dart';
 import '../../core/constants/app_constants.dart';
@@ -16,9 +17,7 @@ class UserRepository {
         AppConstants.usersCollection,
         userId,
       );
-
       if (!doc.exists) return null;
-
       return UserModelX.fromFirestore(doc.data()!, doc.id);
     } catch (e) {
       throw FirestoreFailure('Lỗi lấy thông tin người dùng: $e');
@@ -59,11 +58,9 @@ class UserRepository {
         'role': role,
         'updatedAt': DateTime.now().toIso8601String(),
       };
-
       if (managedArtistIds != null) {
         data['managedArtistIds'] = managedArtistIds;
       }
-
       await _firestoreService.updateDocument(
         AppConstants.usersCollection,
         userId,
@@ -74,22 +71,6 @@ class UserRepository {
     }
   }
 
-  /// Update FCM token
-  Future<void> updateFcmToken(String userId, String token) async {
-    try {
-      await _firestoreService.updateDocument(
-        AppConstants.usersCollection,
-        userId,
-        {
-          'fcmToken': token,
-          'updatedAt': DateTime.now().toIso8601String(),
-        },
-      );
-    } catch (e) {
-      throw FirestoreFailure('Lỗi cập nhật FCM token: $e');
-    }
-  }
-
   /// Get all pending users (for admin approval)
   Future<List<UserModel>> getPendingUsers() async {
     try {
@@ -97,7 +78,6 @@ class UserRepository {
         AppConstants.usersCollection,
         queryBuilder: (ref) => ref.where('role', isEqualTo: 'pending'),
       );
-
       return snapshot.docs
           .map((doc) => UserModelX.fromFirestore(doc.data(), doc.id))
           .toList();
@@ -136,7 +116,6 @@ class UserRepository {
     try {
       final data = user.toFirestore();
       data['updatedAt'] = DateTime.now().toIso8601String();
-      
       await _firestoreService.updateDocument(
         AppConstants.usersCollection,
         user.id,
@@ -159,19 +138,19 @@ class UserRepository {
     }
   }
 
-  /// Update user FCM token
-  Future<void> updateUserFCMToken(String userId, String fcmToken) async {
+  /// Update user avatar (photoUrl only)
+  Future<void> updatePhotoUrl(String userId, String photoUrl) async {
     try {
       await _firestoreService.updateDocument(
         AppConstants.usersCollection,
         userId,
         {
-          'fcmToken': fcmToken,
+          'photoUrl': photoUrl,
           'updatedAt': DateTime.now().toIso8601String(),
         },
       );
     } catch (e) {
-      throw FirestoreFailure('Lỗi cập nhật FCM token: $e');
+      throw FirestoreFailure('Lỗi cập nhật ảnh đại diện: $e');
     }
   }
 
@@ -188,5 +167,69 @@ class UserRepository {
       throw FirestoreFailure('Lỗi tạo user: $e');
     }
   }
-}
 
+  // =========================================================
+  // ✅ 3 METHODS MỚI — FCM Token & Recipient Query
+  // =========================================================
+
+  /// Lấy tất cả users có status = active.
+  /// Dùng bởi _getRecipientUserIds() khi tạo reminder.
+  Future<List<UserModel>> getAllActiveUsers() async {
+    try {
+      final snapshot = await _firestoreService.getCollection(
+        AppConstants.usersCollection,
+        queryBuilder: (ref) => ref.where('status', isEqualTo: 'active'),
+      );
+      return snapshot.docs
+          .map((doc) => UserModelX.fromFirestore(doc.data(), doc.id))
+          .toList();
+    } catch (e) {
+      throw FirestoreFailure('Lỗi lấy danh sách users: $e');
+    }
+  }
+
+  /// Append FCM token của thiết bị hiện tại vào list.
+  /// Dùng arrayUnion → không ghi đè token cũ của các thiết bị khác.
+  /// Gọi sau khi login thành công hoặc khi token được refresh.
+  Future<void> registerFcmToken(String userId, String token) async {
+    if (token.isEmpty) return;
+    try {
+      await _firestoreService.firestore
+          .collection(AppConstants.usersCollection)
+          .doc(userId)
+          .update({
+        'fcmTokens': FieldValue.arrayUnion([token]),
+        'updatedAt': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      throw FirestoreFailure('Lỗi đăng ký FCM token: $e');
+    }
+  }
+
+  /// Xóa FCM token của thiết bị hiện tại khỏi list.
+  /// Dùng arrayRemove → chỉ xóa token này, giữ nguyên token các thiết bị khác.
+  /// Gọi trước khi logout.
+  Future<void> unregisterFcmToken(String userId, String token) async {
+    if (token.isEmpty) return;
+    try {
+      await _firestoreService.firestore
+          .collection(AppConstants.usersCollection)
+          .doc(userId)
+          .update({
+        'fcmTokens': FieldValue.arrayRemove([token]),
+        'updatedAt': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      throw FirestoreFailure('Lỗi hủy FCM token: $e');
+    }
+  }
+
+  /// @deprecated Dùng [registerFcmToken] thay thế.
+  ///
+  /// Giữ lại để [fcmInitializerProvider] trong auth_wrapper.dart không bị
+  /// lỗi compile. Nội bộ gọi registerFcmToken() (arrayUnion) nên
+  /// hành vi đã đúng — không còn ghi đè token.
+  Future<void> updateUserFCMToken(String userId, String fcmToken) async {
+    await registerFcmToken(userId, fcmToken);
+  }
+}

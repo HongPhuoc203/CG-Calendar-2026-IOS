@@ -7,17 +7,15 @@ import '../../providers/services_providers.dart';
 import '../admin/admin_panel_screen.dart';
 import '../export/export_revenue_screen.dart';
 import '../../core/utils/logger.dart';
+import '../../providers/repositories_providers.dart';
 import 'personal_infor_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-
-/// Profile Screen
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
-
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -29,9 +27,7 @@ class ProfileScreen extends ConsumerWidget {
         child: currentUser.when(
           data: (user) => _buildProfileContent(context, ref, user),
           loading: () => const Center(
-            child: CircularProgressIndicator(
-              color: AppColors.primary,
-            ),
+            child: CircularProgressIndicator(color: AppColors.primary),
           ),
           error: (error, stack) => Center(
             child: Text(
@@ -46,14 +42,13 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildProfileContent(BuildContext context, WidgetRef ref, dynamic user) {
+  Widget _buildProfileContent(
+      BuildContext context, WidgetRef ref, dynamic user) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
           const SizedBox(height: 24),
-
-          // Avatar & Name
           GestureDetector(
             onTap: () => _pickAndUploadAvatar(context, ref),
             child: Stack(
@@ -66,7 +61,10 @@ class ProfileScreen extends ConsumerWidget {
                       : null,
                   child: user?.photoUrl == null
                       ? Text(
-                          user?.displayName?.substring(0, 1).toUpperCase() ?? 'U',
+                          user?.displayName
+                                  ?.substring(0, 1)
+                                  .toUpperCase() ??
+                              'U',
                           style: const TextStyle(
                             color: AppColors.primary,
                             fontSize: 40,
@@ -75,8 +73,6 @@ class ProfileScreen extends ConsumerWidget {
                         )
                       : null,
                 ),
-
-                // Icon edit
                 Positioned(
                   bottom: 0,
                   right: 0,
@@ -86,18 +82,14 @@ class ProfileScreen extends ConsumerWidget {
                       color: AppColors.primary,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
-                      Icons.camera_alt,
-                      color: Colors.white,
-                      size: 16,
-                    ),
+                    child: const Icon(Icons.camera_alt,
+                        color: Colors.white, size: 16),
                   ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 16),
-
           Text(
             user?.displayName ?? 'User',
             style: const TextStyle(
@@ -107,7 +99,6 @@ class ProfileScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 8),
-
           Text(
             user?.email ?? '',
             style: TextStyle(
@@ -116,17 +107,13 @@ class ProfileScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 12),
-
-          // Role Badge
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             decoration: BoxDecoration(
               color: AppColors.primary.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: AppColors.primary,
-                width: 1,
-              ),
+              border: Border.all(color: AppColors.primary, width: 1),
             ),
             child: Text(
               user?.role.displayName ?? '',
@@ -137,84 +124,59 @@ class ProfileScreen extends ConsumerWidget {
               ),
             ),
           ),
-
           const SizedBox(height: 32),
-
-          // Menu Items
           _buildMenuItem(
             icon: Icons.person_outline,
             title: 'Thông tin cá nhân',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const PersonalInfoScreen(),
-                ),
-              );
-            },
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (context) => const PersonalInfoScreen()),
+            ),
           ),
-
           _buildMenuItem(
             icon: Icons.notifications_outlined,
             title: 'Cài đặt thông báo',
-            onTap: () {
-              _showNotificationTestDialog(context, ref);
-            },
+            onTap: () => _showNotificationTestDialog(context, ref),
           ),
-
           if (user?.role == UserRole.superEditor)
             _buildMenuItem(
               icon: Icons.admin_panel_settings,
               title: 'Quản trị hệ thống',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const AdminPanelScreen(),
-                  ),
-                );
-              },
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => const AdminPanelScreen()),
+              ),
               iconColor: AppColors.warning,
             ),
-
           if (user?.role == UserRole.superEditor)
             _buildMenuItem(
               icon: Icons.table_chart_outlined,
               title: 'Xuất file Doanh thu',
               subtitle: 'Xuất báo cáo Excel tổng hợp',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const ExportRevenueScreen(),
-                  ),
-                );
-              },
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => const ExportRevenueScreen()),
+              ),
               iconColor: AppColors.success,
             ),
-
           _buildMenuItem(
             icon: Icons.help_outline,
             title: 'Trợ giúp',
-            onTap: () {
-              // TODO: Navigate to help
-            },
+            onTap: () {},
           ),
-
           _buildMenuItem(
             icon: Icons.info_outline,
             title: 'Về ứng dụng',
-            onTap: () {
-              _showAboutDialog(context);
-            },
+            onTap: () => _showAboutDialog(context),
           ),
-
           const SizedBox(height: 16),
-
-          // Logout Button
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
+              // ✅ Gọi _logout(context, ref) — không thay đổi so với cũ
               onPressed: () => _logout(context, ref),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.error,
@@ -227,17 +189,12 @@ class ProfileScreen extends ConsumerWidget {
               icon: const Icon(Icons.logout),
               label: const Text(
                 'Đăng xuất',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+                style:
+                    TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
           ),
-
           const SizedBox(height: 32),
-
-          
         ],
       ),
     );
@@ -259,166 +216,83 @@ class ProfileScreen extends ConsumerWidget {
         decoration: BoxDecoration(
           color: AppColors.surfaceDark,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: AppColors.borderDark,
-            width: 1,
-          ),
+          border: Border.all(color: AppColors.borderDark, width: 1),
         ),
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: (iconColor ?? AppColors.primary).withValues(alpha: 0.1),
+                color:
+                    (iconColor ?? AppColors.primary).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(
-                icon,
-                color: iconColor ?? AppColors.primary,
-                size: 20,
-              ),
+              child: Icon(icon,
+                  color: iconColor ?? AppColors.primary, size: 20),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
+                  Text(title,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500)),
                   if (subtitle != null) ...[
                     const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: AppColors.textDarkSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
+                    Text(subtitle,
+                        style: const TextStyle(
+                            color: AppColors.textDarkSecondary,
+                            fontSize: 12)),
                   ],
                 ],
               ),
             ),
-            const Icon(
-              Icons.chevron_right,
-              color: AppColors.textDarkSecondary,
-              size: 20,
-            ),
+            const Icon(Icons.chevron_right,
+                color: AppColors.textDarkSecondary, size: 20),
           ],
         ),
       ),
     );
   }
 
-  void _showNotificationTestDialog(BuildContext context, WidgetRef ref) {
-    final scheduler = ref.read(localNotificationSchedulerProvider);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surfaceDark,
-        title: const Text(
-          '🔔 Kiểm tra thông báo',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'Chọn loại test để kiểm tra hệ thống thông báo:',
-          style: TextStyle(color: AppColors.textDarkSecondary),
-        ),
-        actions: [
-          // Test ngay lập tức
-          TextButton.icon(
-            icon: const Icon(Icons.bolt, color: AppColors.primary),
-            label: const Text(
-              'Test ngay',
-              style: TextStyle(color: AppColors.primary),
-            ),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await scheduler.sendTestNotification();
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('✅ Đã gửi test notification! Kiểm tra thanh thông báo.'),
-                    backgroundColor: AppColors.success,
-                    duration: Duration(seconds: 4),
-                  ),
-                );
-              }
-            },
-          ),
-          // Test sau 1 phút
-          TextButton.icon(
-            icon: const Icon(Icons.schedule, color: AppColors.warning),
-            label: const Text(
-              'Test sau 1 phút',
-              style: TextStyle(color: AppColors.warning),
-            ),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await scheduler.sendScheduledTestNotification();
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('⏰ Đã lên lịch test notification sau 1 phút!'),
-                    backgroundColor: AppColors.warning,
-                    duration: Duration(seconds: 4),
-                  ),
-                );
-              }
-            },
-          ),
-          // Tắt battery optimization
-          TextButton.icon(
-            icon: const Icon(Icons.battery_charging_full, color: Colors.orange),
-            label: const Text(
-              'Tắt Battery Opt.',
-              style: TextStyle(color: Colors.orange),
-            ),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await scheduler.requestBatteryOptimizationExemption();
-            },
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Đóng'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showAboutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surfaceDark,
-        title: const Text(
-          'Starbase',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'Nền tảng vận hành và quản lý nghệ sĩ toàn diện',
-          style: TextStyle(color: AppColors.textDarkSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Đóng'),
-          ),
-        ],
-      ),
-    );
-  }
-
+  // ✅ FIX: _logout nhận đủ context + ref (đúng với ConsumerWidget pattern),
+  // tích hợp luôn logic unregister FCM token thay vì gọi _handleLogout()
+  // (vốn không tồn tại trong ConsumerWidget).
+  //
+  // Thứ tự thực hiện:
+  //   1. Lấy uid TRƯỚC khi signOut (sau signOut uid = null)
+  //   2. unregisterFcmToken → xóa token thiết bị này khỏi Firestore
+  //   3. Xóa onTokenChanged callback để tránh memory leak
+  //   4. signOut() → kết thúc session Firebase
   Future<void> _logout(BuildContext context, WidgetRef ref) async {
     try {
       final authService = ref.read(authServiceProvider);
+      final fcmService = ref.read(fcmServiceProvider);
+      final userRepo = ref.read(userRepositoryProvider);
+
+      // Bước 1: lấy uid TRƯỚC signOut
+      final currentUser = authService.currentUser;
+
+      // Bước 2: xóa FCM token thiết bị này khỏi Firestore
+      if (currentUser != null) {
+        try {
+          final token = fcmService.fcmToken;
+          if (token != null && token.isNotEmpty) {
+            await userRepo.unregisterFcmToken(currentUser.uid, token);
+          }
+        } catch (e) {
+          // Non-critical: không block logout nếu unregister thất bại
+          logger.w('⚠️ unregisterFcmToken failed (non-critical): $e');
+        }
+      }
+
+      // Bước 3: dọn callback để tránh memory leak
+      fcmService.onTokenChanged = null;
+
+      // Bước 4: đăng xuất Firebase (luôn chạy)
       await authService.signOut();
 
       if (context.mounted) {
@@ -442,44 +316,124 @@ class ProfileScreen extends ConsumerWidget {
     }
   }
 
+  void _showNotificationTestDialog(BuildContext context, WidgetRef ref) {
+    final scheduler = ref.read(localNotificationSchedulerProvider);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceDark,
+        title: const Text('🔔 Kiểm tra thông báo',
+            style: TextStyle(color: Colors.white)),
+        content: const Text(
+          'Chọn loại test để kiểm tra hệ thống thông báo:',
+          style: TextStyle(color: AppColors.textDarkSecondary),
+        ),
+        actions: [
+          TextButton.icon(
+            icon: const Icon(Icons.bolt, color: AppColors.primary),
+            label: const Text('Test ngay',
+                style: TextStyle(color: AppColors.primary)),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await scheduler.sendTestNotification();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                        '✅ Đã gửi test notification! Kiểm tra thanh thông báo.'),
+                    backgroundColor: AppColors.success,
+                    duration: Duration(seconds: 4),
+                  ),
+                );
+              }
+            },
+          ),
+          TextButton.icon(
+            icon: const Icon(Icons.schedule, color: AppColors.warning),
+            label: const Text('Test sau 1 phút',
+                style: TextStyle(color: AppColors.warning)),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await scheduler.sendScheduledTestNotification();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                        '⏰ Đã lên lịch test notification sau 1 phút!'),
+                    backgroundColor: AppColors.warning,
+                    duration: Duration(seconds: 4),
+                  ),
+                );
+              }
+            },
+          ),
+          TextButton.icon(
+            icon: const Icon(Icons.battery_charging_full,
+                color: Colors.orange),
+            label: const Text('Tắt Battery Opt.',
+                style: TextStyle(color: Colors.orange)),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await scheduler.requestBatteryOptimizationExemption();
+            },
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Đóng'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAboutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surfaceDark,
+        title:
+            const Text('Starbase', style: TextStyle(color: Colors.white)),
+        content: const Text(
+          'Nền tảng vận hành và quản lý nghệ sĩ toàn diện',
+          style: TextStyle(color: AppColors.textDarkSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Đóng'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _pickAndUploadAvatar(
-      BuildContext context,
-      WidgetRef ref,
-    ) async {
+      BuildContext context, WidgetRef ref) async {
     try {
       final picker = ImagePicker();
-
       final pickedFile = await picker.pickImage(
         source: ImageSource.gallery,
         imageQuality: 70,
         maxWidth: 500,
       );
-
       if (pickedFile == null) return;
 
       final file = File(pickedFile.path);
 
-      // Loading
       if (context.mounted) {
         showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (_) => const Center(
-            child: CircularProgressIndicator(),
-          ),
+          builder: (_) =>
+              const Center(child: CircularProgressIndicator()),
         );
       }
 
-      // Upload
       final imageUrl = await _uploadAvatarToCloudinary(file);
+      Navigator.pop(context);
 
-      Navigator.pop(context); // close loading
+      if (imageUrl == null) throw Exception('Upload thất bại');
 
-      if (imageUrl == null) {
-        throw Exception('Upload thất bại');
-      }
-
-      // 👉 Lưu Firestore (tuỳ bạn đang dùng service nào)
       final authService = ref.read(authServiceProvider);
       await authService.updatePhotoUrl(imageUrl);
 
@@ -493,9 +447,8 @@ class ProfileScreen extends ConsumerWidget {
       }
     } catch (e) {
       logger.e('Upload avatar error', error: e);
-
       if (context.mounted) {
-        Navigator.pop(context); // đảm bảo đóng loading
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Lỗi upload: $e'),
@@ -511,14 +464,12 @@ class ProfileScreen extends ConsumerWidget {
     const uploadPreset = 'avatar_Starbase';
 
     final url = Uri.parse(
-      'https://api.cloudinary.com/v1_1/$cloudName/image/upload',
-    );
+        'https://api.cloudinary.com/v1_1/$cloudName/image/upload');
 
     final request = http.MultipartRequest('POST', url)
       ..fields['upload_preset'] = uploadPreset
       ..files.add(
-        await http.MultipartFile.fromPath('file', imageFile.path),
-      );
+          await http.MultipartFile.fromPath('file', imageFile.path));
 
     final response = await request.send();
 
@@ -526,9 +477,7 @@ class ProfileScreen extends ConsumerWidget {
       final resData = await response.stream.bytesToString();
       final data = json.decode(resData);
       return data['secure_url'];
-    } else {
-      return null;
     }
+    return null;
   }
-  
 }

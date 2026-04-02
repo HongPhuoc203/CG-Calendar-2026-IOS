@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/errors/failures.dart';
 import '../../providers/services_providers.dart';
+import '../../providers/repositories_providers.dart'; // ✅ THÊM import này
 import 'register_screen.dart';
 
-/// Login Screen - Matches Stitch Design
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -28,6 +28,41 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
+  // ✅ THÊM METHOD NÀY: đăng ký FCM token sau khi login thành công.
+  //
+  // Gọi sau authService.signInWithEmailPassword() để:
+  //   1. Lấy FCM token hiện tại của thiết bị này
+  //   2. Append vào fcmTokens trong Firestore (arrayUnion — không xóa token thiết bị khác)
+  //   3. Setup callback onTokenChanged để tự động cập nhật khi Firebase refresh token
+  //
+  // Nếu thất bại → chỉ log warning, KHÔNG throw, KHÔNG block luồng login.
+  Future<void> _registerFcmToken(String userId) async {
+    try {
+      final fcmService = ref.read(fcmServiceProvider);
+      final userRepo = ref.read(userRepositoryProvider);
+
+      // FCMService.initialize() đã gọi getToken() trước đó khi app khởi động.
+      // Nếu chưa có (thiết bị cũ / lần đầu) thì gọi lại getToken().
+      final token = fcmService.fcmToken ?? await fcmService.getToken();
+      if (token == null || token.isEmpty) return;
+
+      // Lưu token vào Firestore (arrayUnion → không ghi đè)
+      await userRepo.registerFcmToken(userId, token);
+
+      // Thiết lập callback: khi Firebase tự refresh token,
+      // FCMService sẽ gọi callback này để tự động cập nhật Firestore.
+      fcmService.onTokenChanged = (newToken, oldToken) async {
+        if (oldToken != null && oldToken.isNotEmpty) {
+          await userRepo.unregisterFcmToken(userId, oldToken);
+        }
+        await userRepo.registerFcmToken(userId, newToken);
+      };
+    } catch (e) {
+      // Non-critical: FCM token không ảnh hưởng đến luồng đăng nhập chính.
+      debugPrint('⚠️ _registerFcmToken failed (non-critical): $e');
+    }
+  }
+
   Future<void> _handleEmailLogin() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -38,13 +73,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     try {
       final authService = ref.read(authServiceProvider);
-      await authService.signInWithEmailPassword(
+
+      // Bước 1: Đăng nhập Firebase Auth
+      final user = await authService.signInWithEmailPassword(
         _emailController.text.trim(),
         _passwordController.text,
       );
-      
+
+      // ✅ Bước 2: Đăng ký FCM token cho thiết bị này
+      // Gọi NGAY SAU khi có uid, trước khi Navigator pop/push.
+      await _registerFcmToken(user.uid);
+
       if (mounted) {
-        // Navigation sẽ được handle bởi AuthStateListener
+        // Navigation được handle bởi AuthStateListener (không thay đổi)
       }
     } catch (e) {
       if (mounted) {
@@ -60,52 +101,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
     }
   }
-
-  Future<void> _handleGoogleLogin() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final authService = ref.read(authServiceProvider);
-      await authService.signInWithGoogle();
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = e is AuthFailure
-              ? e.message
-              : 'Đăng nhập Google thất bại. Vui lòng thử lại';
-        });
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  // Future<void> _handleAppleLogin() async {
-  //   setState(() {
-  //     _isLoading = true;
-  //     _errorMessage = null;
-  //   });
-
-  //   try {
-  //     final authService = ref.read(authServiceProvider);
-  //     await authService.signInWithApple();
-  //   } catch (e) {
-  //     if (mounted) {
-  //       setState(() {
-  //         _errorMessage = e.toString().replaceAll('AuthFailure: ', '');
-  //       });
-  //     }
-  //   } finally {
-  //     if (mounted) {
-  //       setState(() => _isLoading = false);
-  //     }
-  //   }
-  // }
 
   @override
   Widget build(BuildContext context) {
@@ -123,48 +118,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Header
                     _buildHeader(),
                     const SizedBox(height: 40),
-
-                    // Email Field
                     _buildEmailField(),
                     const SizedBox(height: 20),
-
-                    // Password Field
                     _buildPasswordField(),
                     const SizedBox(height: 20),
-
-                    // Error Message
                     if (_errorMessage != null) ...[
                       _buildErrorMessage(),
                       const SizedBox(height: 20),
                     ],
-
-                    // Login Button
                     _buildLoginButton(),
                     const SizedBox(height: 16),
-
-                    // Forgot Password & FaceID
                     _buildActions(),
-                    
-                    // Social Login Buttons
                     const SizedBox(height: 32),
-                    // Divider
-                    // _buildDivider(),
-                    // const SizedBox(height: 32),
-                    // // Social Login Buttons
-                    // _buildSocialButtons(),
-                    // const SizedBox(height: 32),
-                    
-                    // Sign Up Link
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
                           'Don\'t have an account? ',
                           style: TextStyle(
-                            color: AppColors.textDarkSecondary.withValues(alpha: 0.7),
+                            color: AppColors.textDarkSecondary
+                                .withValues(alpha: 0.7),
                           ),
                         ),
                         TextButton(
@@ -198,7 +173,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget _buildHeader() {
     return Column(
       children: [
-        
         Text(
           'Star Base',
           style: Theme.of(context).textTheme.displayLarge?.copyWith(
@@ -213,10 +187,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           decoration: BoxDecoration(
             color: AppColors.surfaceDark,
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(
-              color: AppColors.borderDark,
-              width: 1,
-            ),
+            border: Border.all(color: AppColors.borderDark, width: 1),
           ),
           child: Row(
             children: [
@@ -226,27 +197,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   color: AppColors.primary.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  Icons.library_music,
-                  size: 20,
-                  color: AppColors.primary,
-                ),
+                child: const Icon(Icons.library_music,
+                    size: 20, color: AppColors.primary),
               ),
-
               const SizedBox(width: 10),
               Flexible(
                 child: Text(
                   'Nền tảng vận hành và quản lý nghệ sĩ toàn diện',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppColors.textDarkSecondary,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: 0.6,
-                      height: 1.3,
-                    ),
-                      textAlign: TextAlign.center,
+                        color: AppColors.textDarkSecondary,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0.6,
+                        height: 1.3,
+                      ),
+                  textAlign: TextAlign.center,
                 ),
               ),
-              
             ],
           ),
         ),
@@ -270,16 +236,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           controller: _emailController,
           keyboardType: TextInputType.emailAddress,
           style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: 'name@cg-management.com',
-          ),
+          decoration: const InputDecoration(hintText: 'name@cg-management.com'),
           validator: (value) {
-            if (value == null || value.isEmpty) {
-              return 'Vui lòng nhập email';
-            }
-            if (!value.contains('@')) {
-              return 'Email không hợp lệ';
-            }
+            if (value == null || value.isEmpty) return 'Vui lòng nhập email';
+            if (!value.contains('@')) return 'Email không hợp lệ';
             return null;
           },
         ),
@@ -310,20 +270,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 _obscurePassword ? Icons.visibility_off : Icons.visibility,
                 color: AppColors.textDarkSecondary,
               ),
-              onPressed: () {
-                setState(() {
-                  _obscurePassword = !_obscurePassword;
-                });
-              },
+              onPressed: () =>
+                  setState(() => _obscurePassword = !_obscurePassword),
             ),
           ),
           validator: (value) {
-            if (value == null || value.isEmpty) {
-              return 'Vui lòng nhập mật khẩu';
-            }
-            if (value.length < 6) {
-              return 'Mật khẩu phải có ít nhất 6 ký tự';
-            }
+            if (value == null || value.isEmpty) return 'Vui lòng nhập mật khẩu';
+            if (value.length < 6) return 'Mật khẩu phải có ít nhất 6 ký tự';
             return null;
           },
         ),
@@ -337,17 +290,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       decoration: BoxDecoration(
         color: AppColors.errorDark.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.error.withValues(alpha: 0.3),
-        ),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.error_outline,
-            color: AppColors.error,
-            size: 20,
-          ),
+          const Icon(Icons.error_outline, color: AppColors.error, size: 20),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -396,55 +343,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           onPressed: () {
             // TODO: Implement biometric auth
           },
-          icon: const Icon(
-            Icons.face,
-            color: AppColors.textDarkSecondary,
-            size: 28,
-          ),
+          icon: const Icon(Icons.face,
+              color: AppColors.textDarkSecondary, size: 28),
         ),
       ],
     );
   }
-
-  // Widget _buildDivider() {
-  //   return Row(
-  //     children: [
-  //       const Expanded(child: Divider(color: AppColors.borderDark)),
-  //       Padding(
-  //         padding: const EdgeInsets.symmetric(horizontal: 16),
-  //         child: Text(
-  //           'Or continue with',
-  //           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-  //                 color: AppColors.textDarkSecondary,
-  //               ),
-  //         ),
-  //       ),
-  //       const Expanded(child: Divider(color: AppColors.borderDark)),
-  //     ],
-  //   );
-  // }
-
-  // Widget _buildSocialButtons() {
-  //   return Row(
-  //     children: [
-  //       Expanded(
-  //         child: _buildSocialButton(
-  //           icon: Icons.g_mobiledata,
-  //           label: 'Google',
-  //           onPressed: _isLoading ? null : _handleGoogleLogin,
-  //         ),
-  //       ),
-  //       const SizedBox(width: 16),
-  //       Expanded(
-  //         child: _buildSocialButton(
-  //           icon: Icons.apple,
-  //           label: 'Apple',
-  //           onPressed: _isLoading ? null : _handleGoogleLogin,
-  //         ),
-  //       ),
-  //     ],
-  //   );
-  // }
 
   Widget _buildSocialButton({
     required IconData icon,
@@ -467,4 +371,3 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 }
-

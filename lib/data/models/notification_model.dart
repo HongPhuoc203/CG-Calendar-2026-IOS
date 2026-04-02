@@ -7,6 +7,7 @@ part 'notification_model.g.dart';
 /// Types of notifications
 enum NotificationType {
   eventReminder,
+  eventCreated,
   taskUrgent,
   revenueUpdate,
   systemNotification;
@@ -15,6 +16,8 @@ enum NotificationType {
     switch (this) {
       case NotificationType.eventReminder:
         return 'Nhắc nhở sự kiện';
+      case NotificationType.eventCreated:
+        return 'Sự kiện mới';
       case NotificationType.taskUrgent:
         return 'Công việc gấp';
       case NotificationType.revenueUpdate:
@@ -28,6 +31,8 @@ enum NotificationType {
     switch (this) {
       case NotificationType.eventReminder:
         return 'event_reminder';
+      case NotificationType.eventCreated:
+        return 'event_created';
       case NotificationType.taskUrgent:
         return 'task_urgent';
       case NotificationType.revenueUpdate:
@@ -41,6 +46,8 @@ enum NotificationType {
     switch (value) {
       case 'event_reminder':
         return NotificationType.eventReminder;
+      case 'event_created':
+        return NotificationType.eventCreated;
       case 'task_urgent':
         return NotificationType.taskUrgent;
       case 'revenue_update':

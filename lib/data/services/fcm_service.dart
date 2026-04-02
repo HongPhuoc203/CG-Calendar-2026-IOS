@@ -4,84 +4,102 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'dart:io' show Platform;
 import '../../core/utils/logger.dart';
 
-/// FCM Service for handling push notifications
+@pragma('vm:entry-point')
+void onFcmNotificationTapBackground(NotificationResponse response) {
+  // Intentionally minimal — no Flutter context available in background isolate
+}
+
 class FCMService {
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin _localNotifications = 
+  final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
-  
+
   String? _fcmToken;
-  
-  /// Get current FCM token
+
+  // ✅ THÊM MỚI: callback để AuthNotifier lắng nghe khi token refresh.
+  // AuthNotifier sẽ inject hàm này sau khi login thành công.
+  // Khi Firebase refresh token, listener bên dưới sẽ gọi callback này
+  // để AuthNotifier tự động cập nhật Firestore (xóa token cũ, thêm token mới).
+  Future<void> Function(String newToken, String? oldToken)? onTokenChanged;
+
   String? get fcmToken => _fcmToken;
-  
-  /// Initialize FCM
+
   Future<void> initialize() async {
     try {
-      // Setup local notifications (Android)
       await _setupLocalNotifications();
-      
-      // Request permission (iOS & Android 13+)
+
+      if (!kIsWeb && Platform.isIOS) {
+        await FirebaseMessaging.instance
+            .setForegroundNotificationPresentationOptions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+      }
+
       await requestPermission();
-      
-      // Get FCM token
       await getToken();
-      
-      // Listen for token refresh
-      _messaging.onTokenRefresh.listen((newToken) {
-        logger.i('FCM token refreshed: $newToken');
+
+      // ✅ SỬA: onTokenRefresh listener đúng cách.
+      // Lưu token cũ → cập nhật _fcmToken → gọi callback ra ngoài.
+      // AuthNotifier (được inject qua onTokenChanged) sẽ xử lý Firestore.
+      _messaging.onTokenRefresh.listen((newToken) async {
+        logger.i('FCM token refreshed: ${newToken.substring(0, 20)}...');
+        final oldToken = _fcmToken; // lưu token cũ trước khi ghi đè
         _fcmToken = newToken;
-        // TODO: Update token in Firestore via callback
+        await onTokenChanged?.call(newToken, oldToken);
       });
-      
-      // Setup message handlers
+
       await setupMessageHandlers();
-      
+
       logger.i('FCM initialized successfully');
     } catch (e) {
       logger.e('Failed to initialize FCM', error: e);
     }
   }
-  
-  /// Setup local notifications (for Android foreground notifications)
+
   Future<void> _setupLocalNotifications() async {
-    if (!kIsWeb && Platform.isAndroid) {
-      // Create notification channel for Android 8.0+
+    if (kIsWeb) return;
+
+    if (Platform.isAndroid) {
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
-        'cg_calendar_reminders', // Must match AndroidManifest.xml
+        'cg_calendar_reminders_v2',
         'CG Calendar Reminders',
-        description: 'Notifications for event reminders',
-        importance: Importance.high,
+        description: 'Nhắc nhở sự kiện từ CG Calendar',
+        importance: Importance.max,
         enableVibration: true,
         playSound: true,
       );
-      
       await _localNotifications
           .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>()
           ?.createNotificationChannel(channel);
-      
-      // Initialize plugin
-      const AndroidInitializationSettings androidSettings = 
-          AndroidInitializationSettings('@mipmap/ic_launcher');
-      
-      const InitializationSettings initSettings = InitializationSettings(
-        android: androidSettings,
-      );
-      
-      await _localNotifications.initialize(
-        initSettings,
-        onDidReceiveNotificationResponse: (NotificationResponse response) {
-          logger.i('Local notification tapped: ${response.payload}');
-          // TODO: Handle notification tap
-        },
-      );
-      
-      logger.i('Local notifications initialized');
     }
+
+    const androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const darwinSettings = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
+
+    await _localNotifications.initialize(
+      const InitializationSettings(
+        android: androidSettings,
+        iOS: darwinSettings,
+        macOS: darwinSettings,
+      ),
+      onDidReceiveNotificationResponse: (NotificationResponse response) {
+        logger.i('Local notification tapped: ${response.payload}');
+      },
+      onDidReceiveBackgroundNotificationResponse:
+          onFcmNotificationTapBackground,
+    );
+
+    logger.i('Local notifications initialized');
   }
-  
-  /// Request notification permission
+
   Future<NotificationSettings> requestPermission() async {
     final settings = await _messaging.requestPermission(
       alert: true,
@@ -92,13 +110,11 @@ class FCMService {
       provisional: false,
       sound: true,
     );
-    
-    logger.i('Notification permission status: ${settings.authorizationStatus}');
-    
+    logger.i(
+        'Notification permission status: ${settings.authorizationStatus}');
     return settings;
   }
-  
-  /// Get FCM token
+
   Future<String?> getToken() async {
     try {
       _fcmToken = await _messaging.getToken();
@@ -113,91 +129,75 @@ class FCMService {
       return null;
     }
   }
-  
-  /// Setup message handlers
+
   Future<void> setupMessageHandlers() async {
-    // Handle foreground messages
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       logger.i('Foreground message received');
       _handleMessage(message);
     });
-    
-    // Handle background message tap
+
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       logger.i('Background message opened');
       _handleMessageTap(message);
     });
-    
-    // Handle terminated state message tap
+
     final initialMessage = await _messaging.getInitialMessage();
     if (initialMessage != null) {
       logger.i('Terminated message opened');
       _handleMessageTap(initialMessage);
     }
   }
-  
-  /// Handle received message (foreground)
+
   void _handleMessage(RemoteMessage message) {
     logger.i('Message data: ${message.data}');
-    
     if (message.notification != null) {
       logger.i('Message notification: ${message.notification!.title}');
-      
-      // Show local notification on Android (foreground)
-      if (!kIsWeb && Platform.isAndroid) {
+      if (!kIsWeb) {
         _showLocalNotification(message);
-      }
-      
-      // Log for debugging
-      if (kDebugMode) {
-        print('📬 Notification: ${message.notification!.title}');
-        print('   ${message.notification!.body}');
       }
     }
   }
-  
-  /// Show local notification (Android foreground)
+
   Future<void> _showLocalNotification(RemoteMessage message) async {
     final notification = message.notification;
     if (notification == null) return;
-    
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'cg_calendar_reminders',
+
+    const androidDetails = AndroidNotificationDetails(
+      'cg_calendar_reminders_v2',
       'CG Calendar Reminders',
-      channelDescription: 'Notifications for event reminders',
-      importance: Importance.high,
+      channelDescription: 'Nhắc nhở sự kiện từ CG Calendar',
+      importance: Importance.max,
       priority: Priority.high,
       icon: '@mipmap/ic_launcher',
       enableVibration: true,
       playSound: true,
     );
-    
-    const NotificationDetails details = NotificationDetails(android: androidDetails);
-    
+
+    const darwinDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
+
     await _localNotifications.show(
       message.hashCode,
       notification.title,
       notification.body,
-      details,
+      const NotificationDetails(
+          android: androidDetails, iOS: darwinDetails, macOS: darwinDetails),
       payload: message.data['eventId'],
     );
   }
-  
-  /// Handle message tap (background/terminated)
+
   void _handleMessageTap(RemoteMessage message) {
     logger.i('Message tapped: ${message.data}');
-    
     final type = message.data['type'];
     final eventId = message.data['eventId'];
-    
     if (type == 'reminder' && eventId != null) {
       logger.i('Opening event: $eventId');
-      // TODO: Navigate to event details via callback
-      // Can use a GlobalKey<NavigatorState> or event bus
     }
   }
-  
-  /// Delete FCM token (on logout)
+
   Future<void> deleteToken() async {
     try {
       await _messaging.deleteToken();
@@ -207,8 +207,7 @@ class FCMService {
       logger.e('Error deleting FCM token', error: e);
     }
   }
-  
-  /// Subscribe to topic
+
   Future<void> subscribeToTopic(String topic) async {
     try {
       await _messaging.subscribeToTopic(topic);
@@ -217,8 +216,7 @@ class FCMService {
       logger.e('Error subscribing to topic', error: e);
     }
   }
-  
-  /// Unsubscribe from topic
+
   Future<void> unsubscribeFromTopic(String topic) async {
     try {
       await _messaging.unsubscribeFromTopic(topic);
@@ -229,13 +227,9 @@ class FCMService {
   }
 }
 
-/// Background message handler (must be top-level function)
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // This function runs in its own isolate
-  // Cannot access app state or UI
   logger.i('Background message: ${message.messageId}');
-  
   if (message.notification != null) {
     logger.i('Background notification: ${message.notification!.title}');
   }

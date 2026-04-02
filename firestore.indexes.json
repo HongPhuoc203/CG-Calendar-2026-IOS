@@ -4,28 +4,51 @@
       "collectionGroup": "reminders",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "eventId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "triggerTime",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "eventId",     "order": "ASCENDING" },
+        { "fieldPath": "triggerTime", "order": "ASCENDING" }
       ]
     },
     {
       "collectionGroup": "reminders",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "isSent",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "triggerTime",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "isSent",      "order": "ASCENDING" },
+        { "fieldPath": "triggerTime", "order": "ASCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "notification_jobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",        "order": "ASCENDING" },
+        { "fieldPath": "scheduledTime", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId",    "order": "ASCENDING"  },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId",    "order": "ASCENDING"  },
+        { "fieldPath": "isRead",    "order": "ASCENDING"  },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId",    "order": "ASCENDING"  },
+        { "fieldPath": "type",      "order": "ASCENDING"  },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     }
   ],

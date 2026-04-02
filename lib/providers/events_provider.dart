@@ -66,13 +66,43 @@ final eventsStreamProvider = StreamProvider.autoDispose<List<EventModel>>((ref) 
   );
 });
 
-/// Provider for events by date range
-final eventsByDateRangeProvider = FutureProvider.autoDispose.family<List<EventModel>, DateRange>(
+/// Provider for events by date range — real-time stream with role-aware filtering.
+/// Automatically reflects creates/updates/deletes on ALL devices without manual refresh.
+final eventsByDateRangeProvider = StreamProvider.autoDispose.family<List<EventModel>, DateRange>(
   (ref, dateRange) {
     final eventRepository = ref.watch(eventRepositoryProvider);
-    return eventRepository.getEventsByDateRange(
-      dateRange.start,
-      dateRange.end,
+    final userProfileAsync = ref.watch(currentUserProfileProvider);
+    final selectedArtistIds = ref.watch(selectedArtistIdsProvider);
+
+    final user = userProfileAsync.asData?.value;
+
+    // Compute role-based artist filter (same logic as eventsStreamProvider)
+    List<String> roleBasedArtistIds = [];
+    if (user != null) {
+      switch (user.role) {
+        case UserRole.pending:
+          roleBasedArtistIds = [];
+          break;
+        case UserRole.viewer:
+          if (user.artistId != null) roleBasedArtistIds = [user.artistId!];
+          break;
+        case UserRole.editor:
+          roleBasedArtistIds = user.managedArtistIds;
+          break;
+        case UserRole.superEditor:
+          roleBasedArtistIds = [];
+          break;
+      }
+    }
+
+    final effectiveArtistIds = (user?.role == UserRole.superEditor && selectedArtistIds.isNotEmpty)
+        ? selectedArtistIds
+        : roleBasedArtistIds;
+
+    return eventRepository.streamEvents(
+      artistIds: effectiveArtistIds.isNotEmpty ? effectiveArtistIds : null,
+      startDate: dateRange.start,
+      endDate: dateRange.end,
     );
   },
 );

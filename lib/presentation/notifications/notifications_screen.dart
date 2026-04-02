@@ -282,6 +282,8 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     switch (type) {
       case NotificationType.eventReminder:
         return Icons.event_note;
+      case NotificationType.eventCreated:
+        return Icons.event_available;
       case NotificationType.taskUrgent:
         return Icons.warning_amber_rounded;
       case NotificationType.revenueUpdate:
@@ -294,6 +296,8 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   Color _getNotificationColor(NotificationType type) {
     switch (type) {
       case NotificationType.eventReminder:
+        return AppColors.primary;
+      case NotificationType.eventCreated:
         return AppColors.primary;
       case NotificationType.taskUrgent:
         return AppColors.error;
@@ -317,9 +321,10 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       await ref.read(markNotificationAsReadProvider(notification.id).future);
     }
 
-    // Navigate to related content
-    if (notification.relatedId != null && notification.type == NotificationType.eventReminder) {
-      // Navigate to event details
+    // Navigate to related content for event-linked notifications
+    if (notification.relatedId != null &&
+        (notification.type == NotificationType.eventReminder ||
+            notification.type == NotificationType.eventCreated)) {
       final eventAsync = await ref.read(eventByIdProvider(notification.relatedId!).future);
       if (eventAsync != null && mounted) {
         Navigator.push(

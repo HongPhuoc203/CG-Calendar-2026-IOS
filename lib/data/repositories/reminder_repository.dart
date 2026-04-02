@@ -52,7 +52,10 @@ class ReminderRepository {
     }
   }
 
-  /// Create multiple reminders at once
+  /// Create multiple reminders at once.
+  /// Uses reminder.id as the Firestore document ID so the local scheduler
+  /// (via ReminderSyncService) always works with the same ID that was
+  /// computed in Dart — preventing duplicate notifications from ID mismatch.
   Future<void> createReminders(List<ReminderModel> reminders) async {
     try {
       final batch = _firestoreService.batch();
@@ -60,7 +63,7 @@ class ReminderRepository {
       for (var reminder in reminders) {
         final docRef = _firestoreService.firestore
             .collection(AppConstants.remindersCollection)
-            .doc();
+            .doc(reminder.id); // ← use Dart UUID, not auto-generated ID
 
         final data = reminder.toFirestore();
         data['createdAt'] = DateTime.now().toIso8601String();
@@ -99,6 +102,44 @@ class ReminderRepository {
     }
   }
 
+  /// Atomically replace all reminders for an event in a SINGLE Firestore batch.
+  ///
+  /// Combines delete-old + create-new into one write so Firestore streams on
+  /// other devices only fire ONCE (with the final state), eliminating the
+  /// intermediate empty-reminder window that caused the update-notification
+  /// race condition.
+  Future<void> replaceRemindersForEvent(
+    String eventId,
+    List<ReminderModel> newReminders,
+  ) async {
+    try {
+      // Fetch existing reminder refs (need IDs to delete)
+      final existing = await _firestoreService.getCollection(
+        AppConstants.remindersCollection,
+        queryBuilder: (ref) => ref.where('eventId', isEqualTo: eventId),
+      );
+
+      final batch = _firestoreService.batch();
+      final col = _firestoreService.firestore.collection(AppConstants.remindersCollection);
+
+      // Delete all old reminders
+      for (final doc in existing.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // Create all new reminders (using Dart UUID as doc ID)
+      for (final reminder in newReminders) {
+        final data = reminder.toFirestore();
+        data['createdAt'] = DateTime.now().toIso8601String();
+        batch.set(col.doc(reminder.id), data);
+      }
+
+      await batch.commit();
+    } catch (e) {
+      throw FirestoreFailure('Lỗi thay thế nhắc lịch: $e');
+    }
+  }
+
   /// Delete all reminders for an event
   Future<void> deleteRemindersByEventId(String eventId) async {
     try {
@@ -117,6 +158,50 @@ class ReminderRepository {
     } catch (e) {
       throw FirestoreFailure('Lỗi xóa nhắc lịch: $e');
     }
+  }
+
+  /// Get all upcoming (future, not yet sent) reminders where userId is a recipient.
+  /// Used by ReminderSyncService to schedule local notifications on each device.
+  ///
+  /// Uses only a single array-contains filter to avoid requiring a Firestore
+  /// composite index. isSent and triggerTime are filtered client-side.
+  Future<List<ReminderModel>> getPendingRemindersForUser(String userId) async {
+    try {
+      final snapshot = await _firestoreService.getCollection(
+        AppConstants.remindersCollection,
+        queryBuilder: (ref) =>
+            ref.where('recipientUserIds', arrayContains: userId),
+      );
+
+      final now = DateTime.now();
+      return snapshot.docs
+          .map((doc) => ReminderModelX.fromFirestore(doc.data(), doc.id))
+          .where((r) => !r.isSent && r.triggerTime.isAfter(now))
+          .toList();
+    } catch (e) {
+      throw FirestoreFailure('Lỗi lấy reminders của người dùng: $e');
+    }
+  }
+
+  /// Stream upcoming reminders for a user in real-time.
+  /// Emits whenever any reminder for this user is added/updated/deleted.
+  ///
+  /// Uses only array-contains (no composite index needed).
+  /// isSent and triggerTime filtering is client-side.
+  Stream<List<ReminderModel>> streamUpcomingRemindersForUser(String userId) {
+    return _firestoreService
+        .streamCollection(
+          AppConstants.remindersCollection,
+          queryBuilder: (ref) =>
+              ref.where('recipientUserIds', arrayContains: userId),
+        )
+        .map((snapshot) {
+          final now = DateTime.now();
+          return snapshot.docs
+              .map((doc) => ReminderModelX.fromFirestore(doc.data(), doc.id))
+              .where((r) => !r.isSent && r.triggerTime.isAfter(now))
+              .toList();
+        });
   }
 
   /// Mark reminder as sent

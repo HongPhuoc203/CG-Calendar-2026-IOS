@@ -13,21 +13,18 @@ class UserModel with _$UserModel {
     required String email,
     String? displayName,
     String? photoUrl,
-
-    /// Role of the user in the system
     required UserRole role,
-
-    /// Account status (active / inactive / suspended)
     required UserStatus status,
 
-    /// For VIEWER: the artist this user represents (only see this artist's events)
+    /// For VIEWER: the artist this user represents
     String? artistId,
 
     /// For EDITOR: list of artists this user manages
     @Default([]) List<String> managedArtistIds,
 
-    /// Last known FCM token for push notifications
-    String? fcmToken,
+    // ✅ FIX: String? fcmToken → List<String> fcmTokens
+    // Hỗ trợ đăng nhập đồng thời trên nhiều thiết bị.
+    @Default([]) List<String> fcmTokens,
 
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -36,7 +33,6 @@ class UserModel with _$UserModel {
   factory UserModel.fromJson(Map<String, dynamic> json) =>
       _$UserModelFromJson(json);
 
-  /// Create a new user with pending role (for first-time login)
   factory UserModel.newUser({
     required String id,
     required String email,
@@ -50,17 +46,14 @@ class UserModel with _$UserModel {
       photoUrl: photoUrl,
       role: UserRole.pending,
       status: UserStatus.active,
-      artistId: null,
-      managedArtistIds: [],
+      fcmTokens: [],
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
   }
 }
 
-/// Extension for Firestore conversion
 extension UserModelX on UserModel {
-  /// Convert to Firestore map
   Map<String, dynamic> toFirestore() {
     return {
       'email': email,
@@ -70,13 +63,12 @@ extension UserModelX on UserModel {
       'status': status.toFirestore(),
       'artistId': artistId,
       'managedArtistIds': managedArtistIds,
-      'fcmToken': fcmToken,
+      'fcmTokens': fcmTokens, // ✅ Lưu list
       'createdAt': createdAt?.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
     };
   }
 
-  /// Create from Firestore document
   static UserModel fromFirestore(Map<String, dynamic> data, String id) {
     return UserModel(
       id: id,
@@ -87,10 +79,23 @@ extension UserModelX on UserModel {
       status: UserStatus.fromString(data['status'] as String? ?? 'active'),
       artistId: data['artistId'] as String?,
       managedArtistIds: List<String>.from(data['managedArtistIds'] ?? []),
-      fcmToken: data['fcmToken'] as String?,
+
+      // ✅ Backward-compatible: đọc được cả field cũ 'fcmToken' (String)
+      // lẫn field mới 'fcmTokens' (List) — không cần migration script.
+      fcmTokens: _parseFcmTokens(data),
+
       createdAt: FirestoreHelpers.toDateTime(data['createdAt']),
       updatedAt: FirestoreHelpers.toDateTime(data['updatedAt']),
     );
   }
-}
 
+  static List<String> _parseFcmTokens(Map<String, dynamic> data) {
+    // Ưu tiên field mới
+    if (data['fcmTokens'] != null) {
+      return List<String>.from(data['fcmTokens']);
+    }
+    // Fallback về field cũ (dữ liệu Firestore chưa migrate)
+    final old = data['fcmToken'] as String?;
+    return (old != null && old.isNotEmpty) ? [old] : [];
+  }
+}

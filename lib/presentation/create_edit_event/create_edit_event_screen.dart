@@ -12,7 +12,6 @@ import '../../providers/artists_provider.dart';
 import '../../providers/event_types_provider.dart';
 import '../../providers/repositories_providers.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/services_providers.dart';
 import '../../providers/events_provider.dart';
 import '../../data/models/reminder_model.dart';
 import '../widgets/reminder_picker.dart';
@@ -1243,65 +1242,101 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
     );
   }
 
-  Future<void> _saveReminders(String eventId) async {
-    if (_reminderOptions.isEmpty) return;
+  Future<List<String>> _getRecipientUserIds({
+    required String creatorUid,
+    required List<String> eventArtistIds,
+  }) async {
+    // Set tự dedup uid
+    final uids = <String>{creatorUid};
+ 
+    try {
+      final userRepo = ref.read(userRepositoryProvider);
+      final allActiveUsers = await userRepo.getAllActiveUsers();
+ 
+      for (final user in allActiveUsers) {
+        // Super Editor / Admin → nhận tất cả thông báo
+        if (user.role.canManageSystem) {
+          uids.add(user.id);
+          continue;
+        }
+ 
+        // Editor → nhận nếu quản lý ít nhất 1 nghệ sĩ trong sự kiện
+        if (user.role == UserRole.editor) {
+          final isRelevant = user.managedArtistIds
+              .any((id) => eventArtistIds.contains(id));
+          if (isRelevant) uids.add(user.id);
+          continue;
+        }
+ 
+        // Viewer → nhận nếu đại diện cho 1 nghệ sĩ trong sự kiện
+        if (user.role == UserRole.viewer && user.artistId != null) {
+          if (eventArtistIds.contains(user.artistId)) {
+            uids.add(user.id);
+          }
+        }
+      }
+    } catch (e) {
+      // Nếu query thất bại, fallback về chỉ người tạo
+      // Không throw để không block toàn bộ flow save
+      logger.w('⚠️ _getRecipientUserIds failed, fallback to creator: $e');
+    }
+ 
+    return uids.toList();
+  }
 
+  Future<void> _saveReminders(String eventId) async {
+    // Edit mode + không còn reminder nào → xóa hết reminders cũ
+    if (_reminderOptions.isEmpty) {
+      if (_isEditMode) {
+        try {
+          final reminderRepo = ref.read(reminderRepositoryProvider);
+          await reminderRepo.deleteRemindersByEventId(eventId);
+        } catch (_) {}
+      }
+      return;
+    }
+ 
     try {
       final reminderRepo = ref.read(reminderRepositoryProvider);
-      final localScheduler = ref.read(localNotificationSchedulerProvider);
       final currentUser = ref.read(authStateProvider).value;
       if (currentUser == null) return;
-
-      // Delete existing reminders if editing
-      if (_isEditMode) {
-        await reminderRepo.deleteRemindersByEventId(eventId);
-      }
-
-      // Create new reminders
+ 
+      final recipientIds = await _getRecipientUserIds(
+        creatorUid: currentUser.uid,
+        eventArtistIds: _selectedArtistIds,
+      );
+ 
+      logger.i('📬 recipientIds (${recipientIds.length}): $recipientIds');
+ 
       final reminders = _reminderOptions.map((option) {
         final triggerTime = _startTime.subtract(
           option.unit.toDuration(option.value),
         );
-
         return ReminderModel(
           id: const Uuid().v4(),
           eventId: eventId,
           value: option.value,
           unit: option.unit,
-          recipientUserIds: [currentUser.uid], // TODO: Add all relevant users
+          recipientUserIds: recipientIds,
           triggerTime: triggerTime,
           isSent: false,
           createdAt: DateTime.now(),
         );
       }).toList();
-
-      // Save to Firestore
-      await reminderRepo.createReminders(reminders);
-      
-      // Schedule local notifications (không cần Cloud Functions!)
-      final event = EventModel(
-        id: eventId,
-        title: _titleController.text,
-        artistIds: _selectedArtistIds,
-        startTime: _startTime,
-        endTime: _endTime,
-        eventTypeId: _selectedEventTypeId!,
-        location: _locationController.text.trim(),
-        notes: _notesController.text.trim(),
-        checklistItems: _checklistItems,
-        createdBy: currentUser.uid,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      );
-      
-      await localScheduler.scheduleEventReminders(
-        event: event,
-        reminders: reminders,
-      );
-      
-      logger.i('✅ Scheduled ${reminders.length} local notifications');
+ 
+      // Lưu lên Firestore trong 1 batch duy nhất (atomic delete + create).
+      // Edit mode: xóa reminders cũ VÀ tạo reminders mới trong cùng 1 commit
+      // → stream trên các thiết bị khác chỉ bắn 1 lần với trạng thái cuối cùng
+      // → không có khoảng trống "0 reminders" gây race condition.
+      // Create mode: chỉ tạo mới (không có gì để xóa).
+      if (_isEditMode) {
+        await reminderRepo.replaceRemindersForEvent(eventId, reminders);
+      } else {
+        await reminderRepo.createReminders(reminders);
+      }
+ 
+      logger.i('✅ Saved ${reminders.length} reminders → ${recipientIds.length} recipients');
     } catch (e) {
-      // Show error to user
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1313,13 +1348,11 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
       }
     }
   }
+  
 
   Widget _buildFinanceEditor() {
     final totalExpenses = _expenses.fold<double>(0, (sum, item) => sum + item.amount);
-    // Nghệ sĩ nhận 60% doanh thu sự kiện (hiển thị tự động theo doanh thu)
-    final artistRevenueShare = _revenue * 0.6;
-    // Thu nhập ròng phải trừ luôn phần đã chia cho nghệ sĩ
-    final netIncome = _revenue - totalExpenses - artistRevenueShare;
+    final netIncome = _revenue - totalExpenses;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1394,59 +1427,6 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                 )..selection = TextSelection.collapsed(
                     offset: _revenue > 0 ? NumberFormatter.format(_revenue).length : 0,
                   ),
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 16),
-
-        // Artist share (60% revenue)
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceDark,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.primary.withValues(alpha: 0.35)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.person_outline,
-                  color: AppColors.primary,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Nghệ sĩ ',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      artistRevenueShare.toVND(),
-                      style: const TextStyle(
-                        color: AppColors.primary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
               ),
             ],
           ),

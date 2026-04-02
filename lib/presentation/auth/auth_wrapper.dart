@@ -30,18 +30,61 @@ final fcmInitializerProvider = FutureProvider.family<void, String?>((ref, userId
     // Request battery optimization exemption (critical for Samsung/MIUI/ColorOS)
     await localScheduler.requestBatteryOptimizationExemption();
     
-    // Get token
+    // Get token and save to Firestore as array element (supports multi-device)
+    // registerFcmToken uses arrayUnion — never overwrites other devices' tokens
     final token = await fcmService.getToken();
-    
-    // Save token to Firestore
     if (token != null) {
-      await userRepo.updateUserFCMToken(userId, token);
-      logger.i('FCM token saved for user: $userId');
+      await userRepo.registerFcmToken(userId, token);
+      logger.i('FCM token registered for user: $userId');
     }
   } catch (e) {
     logger.e('Failed to initialize FCM/Notifications', error: e);
   }
 });
+
+/// Provider to sync Firestore reminders → local notifications (no composite index needed).
+///
+/// Flow:
+///   1. Login: fetch all pending reminders where userId ∈ recipientUserIds → schedule locally.
+///   2. Real-time: Firestore stream watches for any reminder change → re-sync.
+///   3. Logout/dispose: stop listener, cancel all scheduled local notifications.
+///
+/// This covers all recipient types:
+///   - super_editor: included in every event's recipientUserIds (canManageSystem = true)
+///   - editor: included if they manage ≥1 artist in the event
+///   - viewer: included if their artistId is in the event's artistIds
+///   - creator: always included
+final reminderSyncInitializerProvider = FutureProvider.family<void, String?>((ref, userId) async {
+  if (userId == null) return;
+
+  try {
+    final syncService = ref.read(reminderSyncServiceProvider);
+    final reminderRepo = ref.read(reminderRepositoryProvider);
+    final eventRepo = ref.read(eventRepositoryProvider);
+    final scheduler = ref.read(localNotificationSchedulerProvider);
+
+    // Initial full sync from Firestore
+    await syncService.syncAndSchedule(
+      userId: userId,
+      reminderRepo: reminderRepo,
+      eventRepo: eventRepo,
+      scheduler: scheduler,
+    );
+
+    // Start real-time listener for future changes
+    syncService.startListening(
+      userId: userId,
+      reminderRepo: reminderRepo,
+      eventRepo: eventRepo,
+      scheduler: scheduler,
+    );
+
+    ref.onDispose(() => syncService.stopListening());
+  } catch (e) {
+    logger.e('Failed to initialize ReminderSync', error: e);
+  }
+});
+
 
 /// Auth Wrapper - Routes users based on authentication state and role
 class AuthWrapper extends ConsumerWidget {
@@ -68,9 +111,10 @@ class AuthWrapper extends ConsumerWidget {
               return _CreateUserDocumentScreen(userId: user.uid, user: user);
             }
             
-            // Initialize FCM for authenticated users
+            // Initialize FCM + sync reminders for all devices of this user
             ref.watch(fcmInitializerProvider(user.uid));
-            
+            ref.watch(reminderSyncInitializerProvider(user.uid));
+
             // Route based on role
             switch (profile.role.toFirestore()) {
               case 'pending':
