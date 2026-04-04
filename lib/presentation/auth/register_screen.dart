@@ -1,10 +1,11 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/app_colors.dart';
-import '../../providers/services_providers.dart';
+import '../../core/utils/logger.dart';
 import '../../data/models/user_model.dart';
 import '../../providers/repositories_providers.dart';
-import '../../core/utils/logger.dart';
+import '../../providers/services_providers.dart';
 
 /// Register Screen - User registration
 class RegisterScreen extends ConsumerStatefulWidget {
@@ -33,6 +34,50 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
+  }
+
+  // Same early-registration logic as LoginScreen._registerFcmToken().
+  // Called right after the Firestore user doc is created so the token is
+  // persisted before fcmInitializerProvider runs in AuthWrapper.
+  // Never throws — failures are logged with full stack traces.
+  Future<void> _registerFcmToken(String userId) async {
+    final fcmService = ref.read(fcmServiceProvider);
+    final userRepo   = ref.read(userRepositoryProvider);
+
+    NotificationSettings? settings;
+    try {
+      settings = await fcmService.requestPermission();
+      logger.i('[FCM][register] Permission: ${settings.authorizationStatus} — userId: $userId');
+    } catch (e, st) {
+      logger.e('[FCM][register] requestPermission() failed', error: e, stackTrace: st);
+    }
+
+    fcmService.onTokenChanged = (newToken, oldToken) async {
+      try {
+        if (oldToken != null && oldToken.isNotEmpty) {
+          await userRepo.unregisterFcmToken(userId, oldToken);
+        }
+        await userRepo.registerFcmToken(userId, newToken);
+        logger.i('[FCM][register] Refreshed token saved for userId: $userId');
+      } catch (e, st) {
+        logger.e('[FCM][register] Failed to save refreshed token', error: e, stackTrace: st);
+      }
+    };
+
+    try {
+      final token = fcmService.fcmToken ?? await fcmService.getToken();
+      if (token == null || token.isEmpty) {
+        logger.w('[FCM][register] getToken() returned null — permission denied or '
+            'FCM not initialized. userId: $userId. '
+            'fcmInitializerProvider will retry after the profile loads.');
+        return;
+      }
+      logger.i('[FCM][register] Token: ${token.substring(0, 20)}... userId: $userId');
+      await userRepo.registerFcmToken(userId, token);
+      logger.i('[FCM][register] Token saved to Firestore for userId: $userId');
+    } catch (e, st) {
+      logger.e('[FCM][register] getToken/registerFcmToken failed', error: e, stackTrace: st);
+    }
   }
 
   Future<void> _register() async {
@@ -83,8 +128,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       );
 
       await userRepo.createUser(newUser);
-
       logger.i('User registered successfully: $userId');
+
+      // Register FCM token immediately after doc creation.
+      // fcmInitializerProvider will also run once AuthWrapper sees the new
+      // profile, but this early call ensures the token is saved sooner.
+      await _registerFcmToken(userId);
 
       if (mounted) {
         // Show success message

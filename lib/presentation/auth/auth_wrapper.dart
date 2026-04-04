@@ -11,34 +11,98 @@ import '../main/main_screen.dart';
 import '../splash/splash_screen.dart';
 import '../../core/utils/logger.dart';
 
-/// Provider to initialize FCM and Local Notifications when user is authenticated
+/// Provider to initialize FCM and Local Notifications when user is authenticated.
+///
+/// Key guarantees:
+///   1. onTokenChanged is wired up FIRST so every future token refresh is
+///      automatically persisted to Firestore (old token removed, new token added).
+///   2. requestPermission() is always called explicitly and its result is logged,
+///      even if fcmService.initialize() failed part-way through.
+///   3. getToken() result is always logged — null means permission was denied
+///      (iOS) or GMS is unavailable; non-null tokens are saved via arrayUnion.
+///   4. All errors include a full stack trace so failures are diagnosable.
 final fcmInitializerProvider = FutureProvider.family<void, String?>((ref, userId) async {
   if (userId == null) return;
-  
-  try {
-    final fcmService = ref.read(fcmServiceProvider);
-    final localScheduler = ref.read(localNotificationSchedulerProvider);
-    final userRepo = ref.read(userRepositoryProvider);
-    
-    // Initialize FCM
-    await fcmService.initialize();
-    
-    // Initialize Local Notification Scheduler
-    await localScheduler.initialize();
-    logger.i('Local notification scheduler initialized');
 
-    // Request battery optimization exemption (critical for Samsung/MIUI/ColorOS)
-    await localScheduler.requestBatteryOptimizationExemption();
-    
-    // Get token and save to Firestore as array element (supports multi-device)
-    // registerFcmToken uses arrayUnion — never overwrites other devices' tokens
-    final token = await fcmService.getToken();
-    if (token != null) {
-      await userRepo.registerFcmToken(userId, token);
-      logger.i('FCM token registered for user: $userId');
+  final fcmService  = ref.read(fcmServiceProvider);
+  final localScheduler = ref.read(localNotificationSchedulerProvider);
+  final userRepo   = ref.read(userRepositoryProvider);
+
+  // ── Step 1: wire up token-refresh callback BEFORE initialize() ──────────
+  // FCMService.initialize() starts the onTokenRefresh listener. If onTokenChanged
+  // is null at that point the refreshed token is dropped. Set it first.
+  fcmService.onTokenChanged = (newToken, oldToken) async {
+    logger.i('[FCM] Token refreshed — old: ${oldToken?.substring(0, 20) ?? 'none'}, '
+        'new: ${newToken.substring(0, 20)}... userId: $userId');
+    try {
+      if (oldToken != null && oldToken.isNotEmpty) {
+        await userRepo.unregisterFcmToken(userId, oldToken);
+      }
+      await userRepo.registerFcmToken(userId, newToken);
+      logger.i('[FCM] Refreshed token saved to Firestore for userId: $userId');
+    } catch (e, st) {
+      logger.e('[FCM] Failed to persist refreshed token', error: e, stackTrace: st);
     }
-  } catch (e) {
-    logger.e('Failed to initialize FCM/Notifications', error: e);
+  };
+
+  // ── Step 2: initialize FCM service (sets up local-notification plugin,
+  //           requests system permission, begins onTokenRefresh listener) ──
+  try {
+    logger.i('[FCM] Starting FCMService.initialize() for userId: $userId');
+    await fcmService.initialize();
+    logger.i('[FCM] FCMService.initialize() completed');
+  } catch (e, st) {
+    // initialize() has its own internal try-catch and normally never throws,
+    // but guard here in case the platform layer throws directly.
+    logger.e('[FCM] FCMService.initialize() threw unexpectedly', error: e, stackTrace: st);
+  }
+
+  // ── Step 3: initialize local notification scheduler ─────────────────────
+  try {
+    await localScheduler.initialize();
+    logger.i('[FCM] LocalNotificationScheduler initialized');
+  } catch (e, st) {
+    logger.e('[FCM] LocalNotificationScheduler.initialize() failed', error: e, stackTrace: st);
+  }
+
+  // ── Step 4: request battery optimization exemption ──────────────────────
+  try {
+    await localScheduler.requestBatteryOptimizationExemption();
+  } catch (e, st) {
+    logger.e('[FCM] requestBatteryOptimizationExemption() failed', error: e, stackTrace: st);
+  }
+
+  // ── Step 5: explicitly check/re-request permission and log the result ───
+  // Even if initialize() failed internally before calling requestPermission(),
+  // we call it here so the dialog is shown and the status is known.
+  try {
+    final settings = await fcmService.requestPermission();
+    logger.i('[FCM] Notification permission status: ${settings.authorizationStatus} '
+        'for userId: $userId');
+  } catch (e, st) {
+    logger.e('[FCM] requestPermission() failed', error: e, stackTrace: st);
+  }
+
+  // ── Step 6: get token and persist to Firestore ───────────────────────────
+  try {
+    final token = await fcmService.getToken();
+
+    if (token == null) {
+      // Most common causes:
+      //   iOS  — notification permission was denied by the user.
+      //   Any  — no internet at this exact moment (token unavailable).
+      //   Any  — Firebase project misconfiguration / no GMS on device.
+      logger.w('[FCM] getToken() returned null — notification permission may be '
+          'denied, or no connectivity. userId: $userId. '
+          'The token will be registered on the next onTokenRefresh event.');
+      return;
+    }
+
+    logger.i('[FCM] Token obtained: ${token.substring(0, 20)}... userId: $userId');
+    await userRepo.registerFcmToken(userId, token);
+    logger.i('[FCM] Token saved to Firestore (arrayUnion) for userId: $userId');
+  } catch (e, st) {
+    logger.e('[FCM] getToken/registerFcmToken failed', error: e, stackTrace: st);
   }
 });
 

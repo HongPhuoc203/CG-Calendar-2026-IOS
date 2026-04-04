@@ -1,9 +1,11 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/errors/failures.dart';
+import '../../core/utils/logger.dart';
 import '../../providers/services_providers.dart';
-import '../../providers/repositories_providers.dart'; // ✅ THÊM import này
+import '../../providers/repositories_providers.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -28,38 +30,61 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
-  // ✅ THÊM METHOD NÀY: đăng ký FCM token sau khi login thành công.
+  // Registers the device's FCM token to Firestore immediately after login.
   //
-  // Gọi sau authService.signInWithEmailPassword() để:
-  //   1. Lấy FCM token hiện tại của thiết bị này
-  //   2. Append vào fcmTokens trong Firestore (arrayUnion — không xóa token thiết bị khác)
-  //   3. Setup callback onTokenChanged để tự động cập nhật khi Firebase refresh token
+  // Steps:
+  //   1. Request notification permission (shows system dialog on iOS on first call;
+  //      on Android 13+ also shows a dialog; subsequent calls are instant).
+  //   2. Wire onTokenChanged callback so any future token rotation is auto-persisted.
+  //   3. Fetch the current token and save it via arrayUnion (non-destructive).
   //
-  // Nếu thất bại → chỉ log warning, KHÔNG throw, KHÔNG block luồng login.
+  // This is a "best-effort, early" attempt. fcmInitializerProvider (in AuthWrapper)
+  // is the authoritative path and will run regardless — this just saves the token
+  // sooner (before the profile stream resolves).
+  //
+  // Never throws — all failures are logged with full stack traces.
   Future<void> _registerFcmToken(String userId) async {
+    final fcmService = ref.read(fcmServiceProvider);
+    final userRepo   = ref.read(userRepositoryProvider);
+
+    // Step 1: request permission. On iOS this shows the system dialog and is
+    // required before getToken() returns a non-null value.
+    NotificationSettings? settings;
     try {
-      final fcmService = ref.read(fcmServiceProvider);
-      final userRepo = ref.read(userRepositoryProvider);
+      settings = await fcmService.requestPermission();
+      logger.i('[FCM][login] Permission: ${settings.authorizationStatus} — userId: $userId');
+    } catch (e, st) {
+      logger.e('[FCM][login] requestPermission() failed', error: e, stackTrace: st);
+    }
 
-      // FCMService.initialize() đã gọi getToken() trước đó khi app khởi động.
-      // Nếu chưa có (thiết bị cũ / lần đầu) thì gọi lại getToken().
-      final token = fcmService.fcmToken ?? await fcmService.getToken();
-      if (token == null || token.isEmpty) return;
-
-      // Lưu token vào Firestore (arrayUnion → không ghi đè)
-      await userRepo.registerFcmToken(userId, token);
-
-      // Thiết lập callback: khi Firebase tự refresh token,
-      // FCMService sẽ gọi callback này để tự động cập nhật Firestore.
-      fcmService.onTokenChanged = (newToken, oldToken) async {
+    // Step 2: wire token-refresh callback so rotations are persisted for this
+    // session, even before fcmInitializerProvider takes over.
+    fcmService.onTokenChanged = (newToken, oldToken) async {
+      try {
         if (oldToken != null && oldToken.isNotEmpty) {
           await userRepo.unregisterFcmToken(userId, oldToken);
         }
         await userRepo.registerFcmToken(userId, newToken);
-      };
-    } catch (e) {
-      // Non-critical: FCM token không ảnh hưởng đến luồng đăng nhập chính.
-      debugPrint('⚠️ _registerFcmToken failed (non-critical): $e');
+        logger.i('[FCM][login] Refreshed token saved for userId: $userId');
+      } catch (e, st) {
+        logger.e('[FCM][login] Failed to save refreshed token', error: e, stackTrace: st);
+      }
+    };
+
+    // Step 3: get token and save it.
+    try {
+      final token = fcmService.fcmToken ?? await fcmService.getToken();
+      if (token == null || token.isEmpty) {
+        logger.w('[FCM][login] getToken() returned null — permission may be denied '
+            'or FCM not yet initialized. userId: $userId. '
+            'fcmInitializerProvider will retry after the profile loads.');
+        return;
+      }
+      logger.i('[FCM][login] Token: ${token.substring(0, 20)}... userId: $userId');
+      await userRepo.registerFcmToken(userId, token);
+      logger.i('[FCM][login] Token saved to Firestore for userId: $userId');
+    } catch (e, st) {
+      logger.e('[FCM][login] getToken/registerFcmToken failed', error: e, stackTrace: st);
     }
   }
 
