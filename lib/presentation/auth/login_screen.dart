@@ -246,6 +246,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Widget _buildEmailField() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -260,7 +261,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         TextFormField(
           controller: _emailController,
           keyboardType: TextInputType.emailAddress,
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(
+            color: isDark ? Colors.white : AppColors.textPrimary,
+          ),
           decoration: const InputDecoration(hintText: 'name@cg-management.com'),
           validator: (value) {
             if (value == null || value.isEmpty) return 'Vui lòng nhập email';
@@ -273,6 +276,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Widget _buildPasswordField() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -287,13 +291,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         TextFormField(
           controller: _passwordController,
           obscureText: _obscurePassword,
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(
+            color: isDark ? Colors.white : AppColors.textPrimary,
+          ),
           decoration: InputDecoration(
             hintText: '••••••••',
             suffixIcon: IconButton(
               icon: Icon(
                 _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                color: AppColors.textDarkSecondary,
+                color: isDark
+                    ? AppColors.textDarkSecondary
+                    : AppColors.textSecondary,
               ),
               onPressed: () =>
                   setState(() => _obscurePassword = !_obscurePassword),

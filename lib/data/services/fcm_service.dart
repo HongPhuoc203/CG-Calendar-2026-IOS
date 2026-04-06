@@ -162,6 +162,17 @@ class FCMService {
     final notification = message.notification;
     if (notification == null) return;
 
+    // Use reminderId.hashCode as notification ID when available.
+    // ReminderSyncService schedules local alarms with the same ID
+    // (reminder.id.hashCode.abs()), so showing the FCM notification with the
+    // same ID replaces the existing local alarm notification on Android instead
+    // of creating a second one — preventing duplicates on devices with both
+    // the local-alarm path and the FCM path active.
+    final reminderId = message.data['reminderId'];
+    final notifId = reminderId != null
+        ? reminderId.hashCode.abs()
+        : message.hashCode.abs();
+
     const androidDetails = AndroidNotificationDetails(
       'cg_calendar_reminders_v2',
       'CG Calendar Reminders',
@@ -180,7 +191,7 @@ class FCMService {
     );
 
     await _localNotifications.show(
-      message.hashCode,
+      notifId,
       notification.title,
       notification.body,
       const NotificationDetails(

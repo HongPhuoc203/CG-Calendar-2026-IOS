@@ -620,7 +620,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   // ─── Calendar layout constants ──────────────────────────────────────────────
 
   /// Height of each week row in the month grid.
-  static const double _kRowH = 90.0;
+  static const double _kRowH = 70.0;
 
   /// Height reserved for the day-number circle inside each cell.
   static const double _kDayNumH = 36.0;
@@ -707,8 +707,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             height: _kDayNumH,
             child: Center(
               child: Container(
-                width: 28,
-                height: 28,
+                width: 32,
+                height: 32,
                 alignment: Alignment.center,
                 decoration: isSelected
                     ? const BoxDecoration(
@@ -727,7 +727,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     fontWeight: isSelected || isToday
                         ? FontWeight.bold
                         : FontWeight.normal,
-                    fontSize: 13,
+                    fontSize: 16,
                   ),
                 ),
               ),

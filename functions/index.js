@@ -147,7 +147,10 @@ exports.onReminderCreated = onDocumentCreated(
           status: 'pending',
           title: notifTitle,
           body: notifBody,
-          data: { eventId: reminder.eventId, type: 'reminder' },
+          // reminderId included so FCMService can cancel the local alarm with the
+          // same notification ID (reminderId.hashCode) before showing the FCM push,
+          // preventing duplicate display on devices that have both paths active.
+          data: { eventId: reminder.eventId, reminderId, type: 'reminder' },
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
       }
@@ -551,16 +554,17 @@ exports.onEventCreated = onDocumentCreated(
 
       logger.info('[onEventCreated] Notification content', { title: notifTitle, body: notifBody });
 
-      // ── [6] FIRESTORE WRITES ──────────────────────────────────────────────────
+      // ── [6] FIRESTORE WRITES (in-app notifications only, no FCM push) ─────────
+      // FCM push notifications are handled exclusively by the reminder system
+      // (onReminderCreated + sendScheduledNotifications). onEventCreated only
+      // writes to the `notifications` collection for the in-app notification screen.
       const serverNow = admin.firestore.FieldValue.serverTimestamp();
-      // Immediate scheduledTime so sendScheduledNotifications picks it up in the next run
-      const scheduledNow = admin.firestore.Timestamp.now();
 
-      // Firestore batch limit is 500 ops; each recipient needs 2 writes.
-      // Process in chunks of 200 recipients (400 ops) to stay well under the limit.
-      const CHUNK_SIZE = 200;
+      // Firestore batch limit is 500 ops; each recipient needs 1 write.
+      // Process in chunks of 400 recipients to stay well under the limit.
+      const CHUNK_SIZE = 400;
       const totalBatches = Math.ceil(recipientArray.length / CHUNK_SIZE);
-      logger.info(`[onEventCreated] Writing notifications in ${totalBatches} batch(es) (chunk size: ${CHUNK_SIZE})...`);
+      logger.info(`[onEventCreated] Writing in-app notifications in ${totalBatches} batch(es) (chunk size: ${CHUNK_SIZE})...`);
 
       for (let i = 0; i < recipientArray.length; i += CHUNK_SIZE) {
         const chunk = recipientArray.slice(i, i + CHUNK_SIZE);
@@ -581,26 +585,13 @@ exports.onEventCreated = onDocumentCreated(
             isRead: false,
             createdAt: serverNow,
           });
-
-          // Immediate FCM notification_job (picked up by sendScheduledNotifications)
-          const jobRef = db.collection('notification_jobs').doc();
-          batch.set(jobRef, {
-            eventId,
-            recipientUserId: userId,
-            scheduledTime: scheduledNow,
-            status: 'pending',
-            title: notifTitle,
-            body: notifBody,
-            data: { eventId, type: 'event_created' },
-            createdAt: serverNow,
-          });
         }
 
         await batch.commit();
-        logger.info(`[onEventCreated] ✔ Batch ${batchIndex}/${totalBatches} committed — ${chunk.length * 2} Firestore ops (${chunk.length} notifications + ${chunk.length} notification_jobs)`);
+        logger.info(`[onEventCreated] ✔ Batch ${batchIndex}/${totalBatches} committed — ${chunk.length} Firestore ops`);
       }
 
-      logger.info(`[onEventCreated] ✅ All notifications written successfully — ${recipientArray.length} recipient(s), ${totalBatches} batch(es), event: ${eventId}`);
+      logger.info(`[onEventCreated] ✅ In-app notifications written — ${recipientArray.length} recipient(s), ${totalBatches} batch(es), event: ${eventId}`);
       return { success: true, recipients: recipientArray.length };
 
     } catch (error) {

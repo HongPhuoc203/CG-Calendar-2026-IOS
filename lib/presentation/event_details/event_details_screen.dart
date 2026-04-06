@@ -314,22 +314,49 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      DateFormat('EEEE, MMMM d, y').format(_currentEvent.startTime),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          DateFormat('EEEE, MMMM d, y').format(_currentEvent.startTime),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (_currentEvent.isAllDay) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                  color:
+                                      AppColors.primary.withValues(alpha: 0.5)),
+                            ),
+                            child: const Text(
+                              'Cả ngày',
+                              style: TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      '${DateFormat('HH:mm').format(_currentEvent.startTime)} - ${DateFormat('HH:mm').format(_currentEvent.endTime)}',
-                      style: const TextStyle(
-                        color: AppColors.textDarkSecondary,
-                        fontSize: 14,
+                    if (!_currentEvent.isAllDay)
+                      Text(
+                        '${DateFormat('HH:mm').format(_currentEvent.startTime)} - ${DateFormat('HH:mm').format(_currentEvent.endTime)}',
+                        style: const TextStyle(
+                          color: AppColors.textDarkSecondary,
+                          fontSize: 14,
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),

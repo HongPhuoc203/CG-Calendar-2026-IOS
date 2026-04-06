@@ -66,16 +66,6 @@ final fcmInitializerProvider = FutureProvider.family<void, String?>((ref, userId
     logger.e('[FCM] LocalNotificationScheduler.initialize() failed', error: e, stackTrace: st);
   }
 
-  // ── Step 3b: cancel any local alarms scheduled by ReminderSyncService ───
-  // All reminder delivery is now handled exclusively by FCM (Cloud Functions).
-  // Local scheduled alarms are no longer used to avoid duplicate notifications.
-  try {
-    await localScheduler.cancelAllNotifications();
-    logger.i('[FCM] Cleared all previously scheduled local alarms');
-  } catch (e, st) {
-    logger.e('[FCM] cancelAllNotifications() failed', error: e, stackTrace: st);
-  }
-
   // ── Step 4: request battery optimization exemption ──────────────────────
   try {
     await localScheduler.requestBatteryOptimizationExemption();
@@ -186,12 +176,15 @@ class AuthWrapper extends ConsumerWidget {
               return _CreateUserDocumentScreen(userId: user.uid, user: user);
             }
             
-            // Initialize FCM for this device.
-            // All reminder notifications are delivered exclusively via FCM push
-            // (Cloud Functions: onReminderCreated + sendScheduledNotifications).
-            // ReminderSyncService local-alarm scheduling is disabled to avoid
-            // duplicate notifications (local alarm + FCM arriving at the same time).
+            // Initialize FCM + sync reminders for all devices of this user.
+            // Both paths are active:
+            //   • ReminderSyncService: schedules local alarms (exact time, works on emulator)
+            //   • Cloud Functions FCM: delivers to background/killed app
+            // Deduplication: FCMService uses reminderId.hashCode as notification ID,
+            // same as ReminderSyncService, so FCM push replaces the local alarm
+            // notification instead of creating a second one.
             ref.watch(fcmInitializerProvider(user.uid));
+            ref.watch(reminderSyncInitializerProvider(user.uid));
 
             // Route based on role
             switch (profile.role.toFirestore()) {
