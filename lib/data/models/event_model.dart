@@ -20,6 +20,7 @@ class EventModel with _$EventModel {
     @Default([]) List<EventLink> links,
     String? notes,
     EventFinance? finance, // Finance/Budget data
+    @Default(false) bool isAllDay,
     required String createdBy,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -128,6 +129,7 @@ extension EventModelX on EventModel {
       'links': links.map((e) => e.toJson()).toList(),
       'notes': notes,
       'finance': finance != null ? EventFinanceFirestoreX(finance!).toFirestore() : null,
+      'isAllDay': isAllDay,
       'createdBy': createdBy,
       'createdAt': createdAt?.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
@@ -157,6 +159,7 @@ extension EventModelX on EventModel {
       finance: data['finance'] != null
           ? EventFinanceFirestoreX.fromFirestore(data['finance'] as Map<String, dynamic>)
           : null,
+      isAllDay: (data['isAllDay'] as bool?) ?? false,
       createdBy: data['createdBy'] as String,
       createdAt: FirestoreHelpers.toDateTime(data['createdAt']),
       updatedAt: FirestoreHelpers.toDateTime(data['updatedAt']),

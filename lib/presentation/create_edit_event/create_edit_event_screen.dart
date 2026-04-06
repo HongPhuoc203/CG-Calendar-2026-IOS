@@ -21,10 +21,12 @@ import '../../core/utils/logger.dart';
 /// Create/Edit Event Screen - For creating new events or editing existing ones
 class CreateEditEventScreen extends ConsumerStatefulWidget {
   final EventModel? event; // null = create, non-null = edit
+  final DateTime? initialDate; // pre-fills start date when launching from calendar
 
   const CreateEditEventScreen({
     super.key,
     this.event,
+    this.initialDate,
   });
 
   @override
@@ -40,7 +42,8 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
 
   DateTime _startTime = DateTime.now();
   DateTime _endTime = DateTime.now().add(const Duration(hours: 1));
-  
+  bool _isAllDay = false;
+
   List<String> _selectedArtistIds = [];
   String? _selectedEventTypeId;
   List<ChecklistItem> _checklistItems = [];
@@ -59,9 +62,16 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
   void initState() {
     super.initState();
     _isEditMode = widget.event != null;
-    
+
     if (_isEditMode) {
       _loadEventData();
+    } else if (widget.initialDate != null) {
+      // Pre-fill start/end times from the date the user tapped on the calendar.
+      // Preserve the time-of-day defaults (now / +1 h) but swap in the chosen date.
+      final now = DateTime.now();
+      final d = widget.initialDate!;
+      _startTime = DateTime(d.year, d.month, d.day, now.hour, now.minute);
+      _endTime = _startTime.add(const Duration(hours: 1));
     }
   }
 
@@ -73,6 +83,7 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
     _notesController.text = event.notes ?? '';
     _startTime = event.startTime;
     _endTime = event.endTime;
+    _isAllDay = event.isAllDay;
     _selectedArtistIds = List.from(event.artistIds);
     _selectedEventTypeId = event.eventTypeId;
     _checklistItems = event.checklistItems.map((item) => item.copyWith()).toList();
@@ -140,46 +151,61 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
       },
     );
 
-    if (date != null && mounted) {
-      final time = await showTimePicker(
-        context: context,
-        initialTime: TimeOfDay.fromDateTime(isStart ? _startTime : _endTime),
-        builder: (context, child) {
-          return Theme(
-            data: Theme.of(context).copyWith(
-              colorScheme: const ColorScheme.dark(
-                primary: AppColors.primary,
-                onPrimary: Colors.white,
-                surface: AppColors.surfaceDark,
-                onSurface: Colors.white,
-              ),
-            ),
-            child: child!,
-          );
-        },
-      );
+    if (date == null || !mounted) return;
 
-      if (time != null && mounted) {
-        setState(() {
-          final newDateTime = DateTime(
-            date.year,
-            date.month,
-            date.day,
-            time.hour,
-            time.minute,
-          );
-          
-          if (isStart) {
-            _startTime = newDateTime;
-            // Auto-adjust end time if needed
-            if (_endTime.isBefore(_startTime)) {
-              _endTime = _startTime.add(const Duration(hours: 1));
-            }
-          } else {
-            _endTime = newDateTime;
+    if (_isAllDay) {
+      // All-day: fix times at 00:00 / 23:59 – no time picker needed
+      setState(() {
+        if (isStart) {
+          _startTime = DateTime(date.year, date.month, date.day, 0, 0);
+          if (_endTime.isBefore(_startTime)) {
+            _endTime = DateTime(date.year, date.month, date.day, 23, 59);
           }
-        });
-      }
+        } else {
+          _endTime = DateTime(date.year, date.month, date.day, 23, 59);
+        }
+      });
+      return;
+    }
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(isStart ? _startTime : _endTime),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: AppColors.primary,
+              onPrimary: Colors.white,
+              surface: AppColors.surfaceDark,
+              onSurface: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (time != null && mounted) {
+      setState(() {
+        final newDateTime = DateTime(
+          date.year,
+          date.month,
+          date.day,
+          time.hour,
+          time.minute,
+        );
+
+        if (isStart) {
+          _startTime = newDateTime;
+          // Auto-adjust end time if needed
+          if (_endTime.isBefore(_startTime)) {
+            _endTime = _startTime.add(const Duration(hours: 1));
+          }
+        } else {
+          _endTime = newDateTime;
+        }
+      });
     }
   }
 
@@ -433,14 +459,23 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
         );
       }
 
+      // Enforce canonical times for all-day events on save
+      final effectiveStart = _isAllDay
+          ? DateTime(_startTime.year, _startTime.month, _startTime.day, 0, 0)
+          : _startTime;
+      final effectiveEnd = _isAllDay
+          ? DateTime(_endTime.year, _endTime.month, _endTime.day, 23, 59)
+          : _endTime;
+
       final event = EventModel(
         id: eventId,
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim().isEmpty 
             ? null 
             : _descriptionController.text.trim(),
-        startTime: _startTime,
-        endTime: _endTime,
+        startTime: effectiveStart,
+        endTime: effectiveEnd,
+        isAllDay: _isAllDay,
         location: _locationController.text.trim().isEmpty 
             ? null 
             : _locationController.text.trim(),
@@ -608,6 +643,8 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
               // Date & Time
               _buildSectionTitle('Thời gian'),
               const SizedBox(height: 16),
+              _buildAllDayToggle(),
+              const SizedBox(height: 12),
               _buildDateTimePicker(
                 label: 'Bắt đầu',
                 dateTime: _startTime,
@@ -784,6 +821,51 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
     );
   }
 
+  Widget _buildAllDayToggle() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceDark,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _isAllDay ? AppColors.primary : AppColors.borderDark,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.wb_sunny_outlined,
+            color: _isAllDay ? AppColors.primary : AppColors.textDarkSecondary,
+            size: 22,
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              'Sự kiện cả ngày',
+              style: TextStyle(color: Colors.white, fontSize: 15),
+            ),
+          ),
+          Switch(
+            value: _isAllDay,
+            activeColor: AppColors.primary,
+            onChanged: (value) {
+              setState(() {
+                _isAllDay = value;
+                if (value) {
+                  // Snap existing times to 00:00 / 23:59
+                  _startTime = DateTime(
+                      _startTime.year, _startTime.month, _startTime.day, 0, 0);
+                  _endTime = DateTime(
+                      _endTime.year, _endTime.month, _endTime.day, 23, 59);
+                }
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDateTimePicker({
     required String label,
     required DateTime dateTime,
@@ -820,7 +902,9 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    DateFormat('EEEE, d MMMM y - HH:mm').format(dateTime),
+                    _isAllDay
+                        ? DateFormat('EEEE, d MMMM y').format(dateTime)
+                        : DateFormat('EEEE, d MMMM y - HH:mm').format(dateTime),
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 16,

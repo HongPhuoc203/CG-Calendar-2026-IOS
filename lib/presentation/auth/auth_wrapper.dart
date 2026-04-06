@@ -58,11 +58,22 @@ final fcmInitializerProvider = FutureProvider.family<void, String?>((ref, userId
   }
 
   // ── Step 3: initialize local notification scheduler ─────────────────────
+  // (needed for displaying FCM notifications when app is in foreground)
   try {
     await localScheduler.initialize();
     logger.i('[FCM] LocalNotificationScheduler initialized');
   } catch (e, st) {
     logger.e('[FCM] LocalNotificationScheduler.initialize() failed', error: e, stackTrace: st);
+  }
+
+  // ── Step 3b: cancel any local alarms scheduled by ReminderSyncService ───
+  // All reminder delivery is now handled exclusively by FCM (Cloud Functions).
+  // Local scheduled alarms are no longer used to avoid duplicate notifications.
+  try {
+    await localScheduler.cancelAllNotifications();
+    logger.i('[FCM] Cleared all previously scheduled local alarms');
+  } catch (e, st) {
+    logger.e('[FCM] cancelAllNotifications() failed', error: e, stackTrace: st);
   }
 
   // ── Step 4: request battery optimization exemption ──────────────────────
@@ -175,9 +186,12 @@ class AuthWrapper extends ConsumerWidget {
               return _CreateUserDocumentScreen(userId: user.uid, user: user);
             }
             
-            // Initialize FCM + sync reminders for all devices of this user
+            // Initialize FCM for this device.
+            // All reminder notifications are delivered exclusively via FCM push
+            // (Cloud Functions: onReminderCreated + sendScheduledNotifications).
+            // ReminderSyncService local-alarm scheduling is disabled to avoid
+            // duplicate notifications (local alarm + FCM arriving at the same time).
             ref.watch(fcmInitializerProvider(user.uid));
-            ref.watch(reminderSyncInitializerProvider(user.uid));
 
             // Route based on role
             switch (profile.role.toFirestore()) {

@@ -82,7 +82,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 final result = await Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const CreateEditEventScreen(),
+                    builder: (context) => CreateEditEventScreen(
+                      initialDate: _selectedDay,
+                    ),
                   ),
                 );
                 // Refresh if event was created
@@ -341,6 +343,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         focusedDay: _focusedDay,
         selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
         calendarFormat: _calendarFormat,
+        startingDayOfWeek: StartingDayOfWeek.monday,
+        rowHeight: _kRowH,
         eventLoader: (day) => _getEventsForDay(day, events),
         onDaySelected: (selectedDay, focusedDay) {
           setState(() {
@@ -351,38 +355,32 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         onPageChanged: (focusedDay) {
           _focusedDay = focusedDay;
         },
+        // Custom day-cell builders replace the default rendering so we can
+        // draw Google-Calendar-style multi-day bars inside each cell.
+        calendarBuilders: CalendarBuilders(
+          defaultBuilder: (context, day, _) =>
+              _buildDayCell(context, day, events),
+          todayBuilder: (context, day, _) =>
+              _buildDayCell(context, day, events, isToday: true),
+          selectedBuilder: (context, day, _) =>
+              _buildDayCell(context, day, events, isSelected: true),
+          outsideBuilder: (context, day, _) =>
+              _buildDayCell(context, day, events, isOutside: true),
+        ),
         calendarStyle: CalendarStyle(
-          // Today
+          // Bars are rendered inside calendarBuilders — disable default dots.
+          markersMaxCount: 0,
+          defaultTextStyle: const TextStyle(color: Colors.white),
+          weekendTextStyle: const TextStyle(color: Colors.white),
+          outsideTextStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
           todayDecoration: BoxDecoration(
             color: AppColors.primary.withValues(alpha: 0.3),
             shape: BoxShape.circle,
           ),
-          todayTextStyle: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
-          
-          // Selected
           selectedDecoration: const BoxDecoration(
             color: AppColors.primary,
             shape: BoxShape.circle,
           ),
-          selectedTextStyle: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
-          
-          // Default
-          defaultTextStyle: const TextStyle(color: Colors.white),
-          weekendTextStyle: const TextStyle(color: Colors.white),
-          outsideTextStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
-          
-          // Markers
-          markerDecoration: const BoxDecoration(
-            color: AppColors.primary,
-            shape: BoxShape.circle,
-          ),
-          markersMaxCount: 3,
         ),
         headerStyle: HeaderStyle(
           formatButtonVisible: false,
@@ -502,14 +500,32 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         children: [
           Row(
             children: [
-              Text(
-                DateFormat('HH:mm').format(event.startTime),
-                style: const TextStyle(
-                  color: AppColors.textDarkSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+              // Time / all-day label
+              if (event.isAllDay)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'Cả ngày',
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                )
+              else
+                Text(
+                  DateFormat('HH:mm').format(event.startTime),
+                  style: const TextStyle(
+                    color: AppColors.textDarkSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -521,6 +537,32 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                   ),
                 ),
               ),
+              // Multi-day badge
+              if (_isMultiDay(event)) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.date_range, size: 11, color: AppColors.warning),
+                      const SizedBox(width: 3),
+                      Text(
+                        '${_eventDayCount(event)}d',
+                        style: const TextStyle(
+                          color: AppColors.warning,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
           if (event.location != null) ...[
@@ -575,15 +617,247 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     );
   }
 
+  // ─── Calendar layout constants ──────────────────────────────────────────────
+
+  /// Height of each week row in the month grid.
+  static const double _kRowH = 90.0;
+
+  /// Height reserved for the day-number circle inside each cell.
+  static const double _kDayNumH = 36.0;
+
+  /// Height of a single multi-day event bar.
+  static const double _kBarH = 13.0;
+
+  /// Vertical gap between stacked bars.
+  static const double _kBarGap = 2.0;
+
+  /// Maximum bars rendered per cell; any additional events become "+N".
+  static const int _kMaxBars = 3;
+
+  // ─── Multi-day bar helpers ───────────────────────────────────────────────────
+
+  /// Deterministic bar colour derived from the event ID so the same event
+  /// always gets the same colour on every day it spans.
+  Color _barColor(EventModel event) => AppColors.artistColors[
+      event.id.hashCode.abs() % AppColors.artistColors.length];
+
+  /// True when [day] is the visual LEFT edge of [event]'s bar:
+  /// either the actual event start date, or Monday (first day of a week row),
+  /// so the bar restarts cleanly after a week-boundary break.
+  bool _isBarStart(EventModel event, DateTime day) =>
+      isSameDay(event.startTime, day) || day.weekday == DateTime.monday;
+
+  /// True when [day] is the visual RIGHT edge of [event]'s bar:
+  /// either the actual event end date, or Sunday (last day of a week row),
+  /// so the bar terminates cleanly before wrapping to the next row.
+  bool _isBarEnd(EventModel event, DateTime day) =>
+      isSameDay(event.endTime, day) || day.weekday == DateTime.sunday;
+
+  /// True if [day] falls within [event]'s date range (inclusive).
+  bool _dayInRange(EventModel event, DateTime day) {
+    final d = DateTime(day.year, day.month, day.day);
+    final s = DateTime(
+        event.startTime.year, event.startTime.month, event.startTime.day);
+    final e = DateTime(
+        event.endTime.year, event.endTime.month, event.endTime.day);
+    return !d.isBefore(s) && !d.isAfter(e);
+  }
+
+  // ─── Custom day-cell builder ─────────────────────────────────────────────────
+
+  /// Builds a complete calendar day cell.
+  ///
+  /// Layout (total = [_kRowH] px):
+  ///   • [_kDayNumH] px  — day-number circle (today / selected styling)
+  ///   • [_kBarH]+[_kBarGap] × N — one coloured bar per multi-day event
+  ///   • optional "+N" overflow label
+  ///   • optional dots for single-day events (only when no bars compete)
+  Widget _buildDayCell(
+    BuildContext context,
+    DateTime day,
+    List<EventModel> allEvents, {
+    bool isToday = false,
+    bool isSelected = false,
+    bool isOutside = false,
+  }) {
+    // Sort multi-day events stably so the same event occupies the same slot
+    // across all the days it spans (primary: start date, secondary: id).
+    final multiDay = allEvents
+        .where((e) => _isMultiDay(e) && _dayInRange(e, day))
+        .toList()
+      ..sort((a, b) {
+        final c = a.startTime.compareTo(b.startTime);
+        return c != 0 ? c : a.id.compareTo(b.id);
+      });
+
+    final singleDay = allEvents
+        .where((e) => !_isMultiDay(e) && isSameDay(e.startTime, day))
+        .toList();
+
+    final visibleBars = multiDay.take(_kMaxBars).toList();
+    final overflow = multiDay.length - _kMaxBars;
+
+    return SizedBox(
+      height: _kRowH,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ── Day number circle ─────────────────────────────────────────────
+          SizedBox(
+            height: _kDayNumH,
+            child: Center(
+              child: Container(
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
+                decoration: isSelected
+                    ? const BoxDecoration(
+                        color: AppColors.primary, shape: BoxShape.circle)
+                    : isToday
+                        ? BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.35),
+                            shape: BoxShape.circle)
+                        : null,
+                child: Text(
+                  '${day.day}',
+                  style: TextStyle(
+                    color: isOutside
+                        ? Colors.white.withValues(alpha: 0.25)
+                        : Colors.white,
+                    fontWeight: isSelected || isToday
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // ── Multi-day event bars ──────────────────────────────────────────
+          for (final event in visibleBars) ...[
+            _buildBarSlice(event, day),
+            SizedBox(height: _kBarGap),
+          ],
+
+          // ── "+N more" overflow label ──────────────────────────────────────
+          if (overflow > 0)
+            Padding(
+              padding: const EdgeInsets.only(left: 5),
+              child: Text(
+                '+$overflow',
+                style: TextStyle(
+                  color: AppColors.textDarkSecondary.withValues(alpha: 0.85),
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+
+          // ── Single-day dots (only when there are no multi-day bars) ───────
+          if (singleDay.isNotEmpty && multiDay.isEmpty)
+            Align(
+              child: Wrap(
+                spacing: 3,
+                children: singleDay
+                    .take(3)
+                    .map((_) => Container(
+                          width: 5,
+                          height: 5,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.primary,
+                          ),
+                        ))
+                    .toList(),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Renders one coloured bar slice for [event] on [day].
+  ///
+  /// The visual trick for seamless spanning:
+  ///   • **Middle days** — zero horizontal margin → bar fills the full cell
+  ///     width, so adjacent cells' bars visually connect into one strip.
+  ///   • **Start day** — tiny left margin (1.5 px) + rounded left cap.
+  ///   • **End day** — tiny right margin (1.5 px) + rounded right cap.
+  ///   • At week boundaries [_isBarStart] / [_isBarEnd] return true on
+  ///     Mon / Sun, so the bar caps itself and restarts on the next row.
+  Widget _buildBarSlice(EventModel event, DateTime day) {
+    final start = _isBarStart(event, day);
+    final end = _isBarEnd(event, day);
+    final color = _barColor(event);
+
+    return Container(
+      height: _kBarH,
+      margin: EdgeInsets.only(
+        left: start ? 1.5 : 0,
+        right: end ? 1.5 : 0,
+      ),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.horizontal(
+          left: start ? const Radius.circular(6) : Radius.zero,
+          right: end ? const Radius.circular(6) : Radius.zero,
+        ),
+      ),
+      alignment: Alignment.centerLeft,
+      // Only the start day shows the title; middle/end days show nothing.
+      child: start
+          ? Padding(
+              padding: const EdgeInsets.only(left: 5, right: 2),
+              child: Text(
+                event.title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  height: 1.0,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            )
+          : null,
+    );
+  }
+
+  // ─── Existing helpers ────────────────────────────────────────────────────────
+
+  bool _isMultiDay(EventModel event) {
+    final start = DateTime(
+        event.startTime.year, event.startTime.month, event.startTime.day);
+    final end = DateTime(
+        event.endTime.year, event.endTime.month, event.endTime.day);
+    return end.isAfter(start);
+  }
+
+  int _eventDayCount(EventModel event) {
+    final start = DateTime(
+        event.startTime.year, event.startTime.month, event.startTime.day);
+    final end = DateTime(
+        event.endTime.year, event.endTime.month, event.endTime.day);
+    return end.difference(start).inDays + 1;
+  }
+
   List<EventModel> _getEventsForDay(DateTime day, List<EventModel> allEvents) {
+    final checkDate = DateTime(day.year, day.month, day.day);
     return allEvents.where((event) {
-      final eventDate = DateTime(
+      final startDate = DateTime(
         event.startTime.year,
         event.startTime.month,
         event.startTime.day,
       );
-      final checkDate = DateTime(day.year, day.month, day.day);
-      return eventDate == checkDate;
+      final endDate = DateTime(
+        event.endTime.year,
+        event.endTime.month,
+        event.endTime.day,
+      );
+      // Match any day within the event's date range (inclusive)
+      return !checkDate.isBefore(startDate) && !checkDate.isAfter(endDate);
     }).toList();
   }
 
