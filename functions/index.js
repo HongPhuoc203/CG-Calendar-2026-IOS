@@ -99,7 +99,7 @@ exports.onReminderCreated = onDocumentCreated(
       const ev = eventDoc.data();
 
       // Calculate notification time
-      const eventTime = new Date(ev.startTime);
+      const eventTime = ev.startTime.toDate();
       const notificationTime = new Date(eventTime);
       switch (reminder.unit) {
         case 'minutes':
@@ -186,7 +186,7 @@ exports.sendScheduledNotifications = onSchedule(
       const jobsSnapshot = await db.collection('notification_jobs')
         .where('status', '==', 'pending')
         .where('scheduledTime', '<=', now)
-        .limit(100)
+        .limit(500)
         .get();
 
       if (jobsSnapshot.empty) {

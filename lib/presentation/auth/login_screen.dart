@@ -53,6 +53,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       settings = await fcmService.requestPermission();
       logger.i('[FCM][login] Permission: ${settings.authorizationStatus} — userId: $userId');
+      //ios
+      if (settings.authorizationStatus == AuthorizationStatus.denied) {
+        logger.w('[FCM][login] Permission denied, skip token registration');
+        return;
+      }
     } catch (e, st) {
       logger.e('[FCM][login] requestPermission() failed', error: e, stackTrace: st);
     }
@@ -72,20 +77,46 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     };
 
     // Step 3: get token and save it.
-    try {
-      final token = fcmService.fcmToken ?? await fcmService.getToken();
-      if (token == null || token.isEmpty) {
-        logger.w('[FCM][login] getToken() returned null — permission may be denied '
-            'or FCM not yet initialized. userId: $userId. '
-            'fcmInitializerProvider will retry after the profile loads.');
-        return;
+    String? token;
+    for (int attempt = 1; attempt <= 3; attempt++) {
+      try {
+        token = fcmService.fcmToken?? await fcmService.getToken();
+        if (token != null && token.isNotEmpty) break;
+        logger.w('[FCM][login] Attempt $attempt: token null, retrying...');
+        await Future.delayed(Duration(seconds: attempt * 2)); // 2s, 4s, 6s
+      } catch (e, st) {
+        logger.e('[FCM][login] Failed to get token', error: e, stackTrace: st);
       }
-      logger.i('[FCM][login] Token: ${token.substring(0, 20)}... userId: $userId');
-      await userRepo.registerFcmToken(userId, token);
-      logger.i('[FCM][login] Token saved to Firestore for userId: $userId');
-    } catch (e, st) {
-      logger.e('[FCM][login] getToken/registerFcmToken failed', error: e, stackTrace: st);
     }
+    if (token == null || token.isEmpty) {
+      logger.w('[FCM][login] Token still null after 3 attempts — '
+        'onTokenChanged sẽ tự lưu khi APNs cấp token. userId: $userId');
+      return;
+    }
+    
+    //step 4 save token
+    try {
+      await userRepo.registerFcmToken(userId, token);
+      logger.i('[FCM][login] Token saved: ${token.substring(0, 20)}... userId: $userId');
+    } catch (e, st) {
+      logger.e('[FCM][login] registerFcmToken failed', error: e, stackTrace: st);
+    }
+
+    // try {
+    //   final token = fcmService.fcmToken ?? await fcmService.getToken();
+    //   if (token == null || token.isEmpty) {
+    //     logger.w('[FCM][login] getToken() returned null — permission may be denied '
+    //         'or FCM not yet initialized. userId: $userId. '
+    //         'fcmInitializerProvider will retry after the profile loads.');
+    //     return;
+    //   }
+    //   logger.i('[FCM][login] Token: ${token.substring(0, 20)}... userId: $userId');
+    //   await userRepo.registerFcmToken(userId, token);
+    //   logger.i('[FCM][login] Token saved to Firestore for userId: $userId');
+    // } catch (e, st) {
+    //   logger.e('[FCM][login] getToken/registerFcmToken failed', error: e, stackTrace: st);
+    // }
+
   }
 
   Future<void> _handleEmailLogin() async {

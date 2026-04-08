@@ -1,5 +1,6 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 import '../../core/utils/firestore_helpers.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 part 'event_model.freezed.dart';
 part 'event_model.g.dart';
@@ -119,8 +120,8 @@ extension EventModelX on EventModel {
     return {
       'title': title,
       'description': description,
-      'startTime': startTime.toIso8601String(),
-      'endTime': endTime.toIso8601String(),
+      'startTime': Timestamp.fromDate(startTime),
+      'endTime': Timestamp.fromDate(endTime),
       'location': location,
       'artistIds': artistIds,
       'eventTypeId': eventTypeId,
@@ -131,8 +132,8 @@ extension EventModelX on EventModel {
       'finance': finance != null ? EventFinanceFirestoreX(finance!).toFirestore() : null,
       'isAllDay': isAllDay,
       'createdBy': createdBy,
-      'createdAt': createdAt?.toIso8601String(),
-      'updatedAt': updatedAt?.toIso8601String(),
+      'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : null,
+      'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
     };
   }
 

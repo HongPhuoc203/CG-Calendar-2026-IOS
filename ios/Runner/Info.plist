@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Cg Calendar</string>
+	<string>Starbase</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,13 +15,19 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>cg_calendar</string>
+	<string>Starbase</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
+
+	<!-- URL Schemes (Google Sign-In / Firebase) -->
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -33,10 +39,12 @@
 			</array>
 		</dict>
 	</array>
-	<key>CFBundleVersion</key>
-	<string>$(FLUTTER_BUILD_NUMBER)</string>
-	<key>CFBundleIconName</key>
-	<string>AppIcon</string>
+
+	<!-- Firebase: tắt auto-swizzling vì AppDelegate tự handle APNs token -->
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<false/>
+
+	<!-- App queries -->
 	<key>LSQueriesSchemes</key>
 	<array>
 		<string>https</string>
@@ -46,8 +54,22 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>PermissionGroupNotification</key>
-	<string>Cg Calendar cần gửi thông báo để nhắc nhở bạn về các lịch trình quan trọng.</string>
+
+	<!-- Notifications -->
+	<key>NSUserNotificationUsageDescription</key>
+	<string>Starbase cần gửi thông báo để nhắc nhở bạn về các lịch trình quan trọng.</string>
+	<key>NSUserNotificationAlertStyle</key>
+	<string>alert</string>
+
+	<!-- Camera & Photo Library -->
+	<key>NSCameraUsageDescription</key>
+	<string>Ứng dụng cần truy cập camera để chụp ảnh đại diện.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Ứng dụng cần truy cập thư viện ảnh để chọn ảnh đại diện.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Ứng dụng cần lưu ảnh vào thư viện.</string>
+
+	<!-- UI -->
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>
@@ -72,11 +94,5 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Ứng dụng cần truy cập thư viện ảnh để chọn ảnh đại diện.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>Ứng dụng cần truy cập camera để chụp ảnh đại diện.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Ứng dụng cần lưu ảnh vào thư viện.</string>
 </dict>
 </plist>

@@ -1,6 +1,7 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 import '../../core/enums/reminder_unit.dart';
 import '../../core/utils/firestore_helpers.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 part 'reminder_model.freezed.dart';
 part 'reminder_model.g.dart';
@@ -34,10 +35,10 @@ extension ReminderModelX on ReminderModel {
       'value': value,
       'unit': unit.toFirestore(),
       'recipientUserIds': recipientUserIds,
-      'triggerTime': triggerTime.toIso8601String(),
+      'triggerTime': Timestamp.fromDate(triggerTime),
       'isSent': isSent,
-      'sentAt': sentAt?.toIso8601String(),
-      'createdAt': createdAt?.toIso8601String(),
+      'sentAt': sentAt != null ? Timestamp.fromDate(sentAt!) : null,
+      'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : null,
     };
   }
 
