@@ -156,4 +156,4 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: assets/images/Starbase.png
+  image_path: assets/images/logo.png

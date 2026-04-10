@@ -11,7 +11,7 @@ import Firebase
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    FirebaseApp.configure() // ✅ PHẢI có, gọi TRƯỚC GeneratedPluginRegistrant
+   
     
     GeneratedPluginRegistrant.register(with: self)
     UNUserNotificationCenter.current().delegate = self
