@@ -66,6 +66,9 @@ class EventFinance with _$EventFinance {
   const factory EventFinance({
     @Default(0) double revenue, // Doanh thu
     @Default([]) List<ExpenseItem> expenses, // Chi phí
+    /// Artist revenue share percentage. Range: 30–80, step 5. Defaults to 60.
+    /// Backward-compatible: existing Firestore docs without this field read as 60.
+    @Default(60) int artistSharePercent,
   }) = _EventFinance;
 
   factory EventFinance.fromJson(Map<String, dynamic> json) =>
@@ -78,6 +81,7 @@ extension EventFinanceFirestoreX on EventFinance {
     return {
       'revenue': revenue,
       'expenses': expenses.map((e) => e.toJson()).toList(),
+      'artistSharePercent': artistSharePercent,
     };
   }
 
@@ -88,6 +92,8 @@ extension EventFinanceFirestoreX on EventFinance {
               ?.map((e) => ExpenseItem.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      // Backward-compatible: old docs without the field default to 60
+      artistSharePercent: (data['artistSharePercent'] as num?)?.toInt() ?? 60,
     );
   }
 }
@@ -109,9 +115,12 @@ class ExpenseItem with _$ExpenseItem {
 extension EventFinanceX on EventFinance {
   /// Total expenses
   double get totalExpenses => expenses.fold(0, (sum, item) => sum + item.amount);
-  
-  /// Net income (revenue - expenses)
-  double get netIncome => revenue - totalExpenses;
+
+  /// Artist share amount derived from the stored percentage
+  double get artistShareAmount => revenue * (artistSharePercent / 100);
+
+  /// Net income (revenue - expenses - artist share)
+  double get netIncome => revenue - totalExpenses - artistShareAmount;
 }
 
 /// Extension for Firestore conversion
@@ -167,4 +176,3 @@ extension EventModelX on EventModel {
     );
   }
 }
-

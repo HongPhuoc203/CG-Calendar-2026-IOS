@@ -23,7 +23,7 @@ class HomeScreen extends ConsumerWidget {
     final dashboardStats = ref.watch(dashboardStatsProvider);
     final urgentEvents = ref.watch(urgentEventsProvider);
     final todayEvents = ref.watch(todayEventsProvider);
-    final revenueStats = ref.watch(revenueStatsProvider);
+    final revenueStats = ref.watch(homeRevenueStatsProvider);
     final currentUser = ref.watch(currentUserProfileProvider);
     final isViewer = currentUser.maybeWhen(
       data: (user) => user?.role == UserRole.viewer,
@@ -31,6 +31,18 @@ class HomeScreen extends ConsumerWidget {
     );
     final isEditor = currentUser.maybeWhen(
       data: (user) => user?.role == UserRole.editor,
+      orElse: () => false,
+    );
+    // Editor chỉ thấy revenue nếu được cấp quyền canViewRevenue
+    final hasRevenueAccess = currentUser.maybeWhen(
+      data: (user) {
+        if (user == null) return false;
+        return switch (user.role) {
+          UserRole.superEditor => true,
+          UserRole.editor => user.canViewRevenue,
+          _ => false,
+        };
+      },
       orElse: () => false,
     );
 
@@ -42,7 +54,7 @@ class HomeScreen extends ConsumerWidget {
             ref.invalidate(dashboardStatsProvider);
             ref.invalidate(urgentEventsProvider);
             ref.invalidate(todayEventsProvider);
-            ref.invalidate(revenueStatsProvider);
+            ref.invalidate(homeRevenueStatsProvider);
           },
           color: AppColors.primary,
           backgroundColor: AppColors.surfaceDark,
@@ -61,6 +73,7 @@ class HomeScreen extends ConsumerWidget {
                     stats,
                     isViewer: isViewer,
                     isEditor: isEditor,
+                    hasRevenueAccess: hasRevenueAccess,
                   ),
                   loading: () => _buildStatsCardsLoading(),
                   error: (error, stack) => _buildError(error.toString()),
@@ -85,11 +98,10 @@ class HomeScreen extends ConsumerWidget {
                 ),
               ),
 
-              // Revenue Chart (hidden for Editor)
+              // Revenue Chart — ẩn với Editor không có quyền
               SliverToBoxAdapter(
-                child: isEditor
-                    ? const SizedBox.shrink()
-                    : revenueStats.when(
+                child: (!isEditor || hasRevenueAccess)
+                    ? revenueStats.when(
                         data: (stats) => _buildRevenueSection(
                           context,
                           stats,
@@ -97,7 +109,8 @@ class HomeScreen extends ConsumerWidget {
                         ),
                         loading: () => _buildSectionLoading(),
                         error: (error, stack) => const SizedBox.shrink(),
-                      ),
+                      )
+                    : const SizedBox.shrink(),
               ),
 
               // Bottom padding
@@ -149,6 +162,7 @@ class HomeScreen extends ConsumerWidget {
     DashboardStatsModel stats, {
     bool isViewer = false,
     bool isEditor = false,
+    bool hasRevenueAccess = false,
   }) {
     final artistShare = stats.totalRevenue * 0.6;
     final totalExpenses = stats.totalExpenses + artistShare;
@@ -166,6 +180,14 @@ class HomeScreen extends ConsumerWidget {
                   title: 'Sự kiện sắp tới',
                   value: '${stats.upcomingEventsCount}',
                   iconColor: AppColors.primary,
+                  onTap: (){
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const CalendarScreen(),
+                      ),
+                    );
+                  },
                 ),
               ),
               const SizedBox(width: 12),
@@ -189,7 +211,7 @@ class HomeScreen extends ConsumerWidget {
               ),
             ],
           ),
-          if (!isViewer && !isEditor) ...[
+          if (!isViewer && (!isEditor || hasRevenueAccess)) ...[
             const SizedBox(height: 12),
             Row(
               children: [
@@ -199,6 +221,14 @@ class HomeScreen extends ConsumerWidget {
                     title: 'Doanh thu',
                     value: NumberFormatter.formatCompact(stats.totalRevenue),
                     iconColor: AppColors.success,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const RevenueScreen(),
+                        ),
+                      );
+                    },
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -208,6 +238,14 @@ class HomeScreen extends ConsumerWidget {
                     title: 'Lợi nhuận',
                     value: NumberFormatter.formatCompact(netIncome),
                     iconColor: netIncome >= 0 ? AppColors.success : AppColors.error,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const RevenueScreen(),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ],

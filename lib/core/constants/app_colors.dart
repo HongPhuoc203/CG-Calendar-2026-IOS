@@ -7,7 +7,7 @@ class AppColors {
   static const Color primaryDark = Color(0xFF0D47B5);
   static const Color primaryLight = Color(0xFF4A7BED);
   
-  // Background (Dark Mode chủ yếu)
+  // Background 
   static const Color backgroundDark = Color(0xFF111621); // #111621
   static const Color backgroundLight = Color(0xFFF6F6F8); // #f6f6f8
   static const Color surfaceDark = Color(0xFF1A2233); // #1a2233 - Cards, inputs
@@ -37,14 +37,35 @@ class AppColors {
   static const List<Color> artistColors = [
     Color(0xFFFF6B6B), // Red
     Color(0xFFED4A7B), // Pink
-    Color(0xFF9B59B6), // Purple
     Color(0xFF3498DB), // Blue
     Color(0xFF1ABC9C), // Teal
-    Color(0xFF16A085), // Dark Teal
     Color(0xFF2ECC71), // Green
     Color(0xFFF39C12), // Orange
     Color(0xFFE67E22), // Dark Orange
     Color(0xFFE74C3C), // Dark Red
+    // --- Thêm 20 màu mới (Vibrant & Distinct) ---
+    // Nhóm Tím/Hồng (Purple/Pink)
+    Color(0xFFD980FA), // Lavender Rose
+    Color(0xFFFDA7DF), // Lavender Tea
+    Color(0xFF6F1E51), // Magenta Purple
+
+    // Nhóm Xanh Dương/Lục (Blue/Cyan)
+    Color(0xFF0652DD), // Merchant Marine Blue
+    Color(0xFF12CBC4), // Blue Martina
+    Color(0xFF009432), // Bright Green
+
+    // Nhóm Vàng/Cam (Yellow/Orange)
+    Color(0xFFFFC312), // Sunflower
+    Color(0xFFC4E538), // Energos
+
+    // Nhóm Đỏ/Đất (Red/Earth)
+    Color(0xFFB53471), // Very Berry
+    Color(0xFF5758BB), // Blue Iris
+    Color(0xFFED4C67), // Bara Red
+
+    // Nhóm Pastel đậm & Neon nhẹ
+    Color(0xFF22A6B3), // Coastal Breeze
+  
   ];
   
   // Border Colors
@@ -56,4 +77,3 @@ class AppColors {
   static const Color shadowLight = Color(0x1A000000);
   static const Color shadowDark = Color(0x40000000);
 }
-

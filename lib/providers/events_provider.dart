@@ -7,7 +7,7 @@ import 'auth_provider.dart';
 
 /// Provider for events stream with role-aware filtering
 ///
-/// - Pending: không thấy event nào (stream rỗng)
+/// - Guest: thấy tất cả sự kiện (nhưng UI giới hạn chi tiết)
 /// - Viewer: chỉ thấy event của chính nghệ sĩ (user.artistId)
 /// - Editor: mặc định thấy events của managedArtistIds
 /// - Super Editor: thấy tất cả events
@@ -31,8 +31,8 @@ final eventsStreamProvider = StreamProvider.autoDispose<List<EventModel>>((ref) 
 
   if (user != null) {
     switch (user.role) {
-      case UserRole.pending:
-        // Không thấy event nào
+      case UserRole.guest:
+        // Guest thấy tất cả sự kiện (nhưng UI sẽ ẩn chi tiết)
         roleBasedArtistIds = [];
         break;
       case UserRole.viewer:
@@ -80,7 +80,7 @@ final eventsByDateRangeProvider = StreamProvider.autoDispose.family<List<EventMo
     List<String> roleBasedArtistIds = [];
     if (user != null) {
       switch (user.role) {
-        case UserRole.pending:
+        case UserRole.guest:
           roleBasedArtistIds = [];
           break;
         case UserRole.viewer:
@@ -144,4 +144,3 @@ enum CalendarViewMode {
   week,
   agenda,
 }
-

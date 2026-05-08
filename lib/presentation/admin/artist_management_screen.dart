@@ -99,6 +99,8 @@ class _ArtistCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final artistColor = ArtistModelX(artist).color;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -106,19 +108,19 @@ class _ArtistCard extends ConsumerWidget {
         color: AppColors.surfaceDark,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: ArtistModelX(artist).color,
-          width: 2,
+          color: artistColor.withValues(alpha: 0.3), // Giảm độ đậm viền để tinh tế hơn
+          width: 1,
         ),
       ),
       child: Row(
         children: [
           CircleAvatar(
             radius: 24,
-            backgroundColor: ArtistModelX(artist).color.withValues(alpha: 0.2),
+            backgroundColor: artistColor.withValues(alpha: 0.2),
             child: Text(
               artist.name.substring(0, 1).toUpperCase(),
               style: TextStyle(
-                color: ArtistModelX(artist).color,
+                color: artistColor,
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
@@ -138,27 +140,14 @@ class _ArtistCard extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Container(
-                      width: 16,
-                      height: 16,
-                      decoration: BoxDecoration(
-                        color: ArtistModelX(artist).color,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      artist.colorHex,
-                      style: const TextStyle(
-                        color: AppColors.textDarkSecondary,
-                        fontSize: 12,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                  ],
+                // Đã xóa Row chứa mã màu Hex ở đây, chỉ để lại chấm màu chỉ thị nếu cần
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: artistColor,
+                    shape: BoxShape.circle,
+                  ),
                 ),
               ],
             ),
@@ -333,15 +322,6 @@ class _ArtistFormDialogState extends ConsumerState<_ArtistFormDialog> {
                   ),
                 );
               }).toList(),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '#$_selectedColor',
-              style: const TextStyle(
-                color: AppColors.textDarkSecondary,
-                fontSize: 12,
-                fontFamily: 'monospace',
-              ),
             ),
           ],
         ),

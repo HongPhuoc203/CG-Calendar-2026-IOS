@@ -12,7 +12,7 @@ final allUsersStreamProvider = StreamProvider<List<UserModel>>((ref) {
   return userRepo.streamAllUsers();
 });
 
-/// User Management Screen - Manage users, approve pending, assign roles
+/// User Management Screen - Manage users and assign roles
 class UserManagementScreen extends ConsumerWidget {
   const UserManagementScreen({super.key});
 
@@ -22,8 +22,12 @@ class UserManagementScreen extends ConsumerWidget {
 
     return usersAsync.when(
       data: (users) {
-        final pendingUsers = users.where((u) => u.role == UserRole.pending).toList();
-        final activeUsers = users.where((u) => u.role != UserRole.pending).toList();
+        // Sort users: Guest first, then alphabetical by name
+        final sortedUsers = List<UserModel>.from(users)..sort((a, b) {
+          if (a.role == UserRole.guest && b.role != UserRole.guest) return -1;
+          if (a.role != UserRole.guest && b.role == UserRole.guest) return 1;
+          return (a.displayName ?? '').compareTo(b.displayName ?? '');
+        });
 
         return RefreshIndicator(
           onRefresh: () async {
@@ -34,31 +38,21 @@ class UserManagementScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (pendingUsers.isNotEmpty) ...[
-                  _buildSectionHeader(
-                    'Pending Approval',
-                    '${pendingUsers.length} users waiting',
-                    AppColors.warning,
-                  ),
-                  const SizedBox(height: 16),
-                  ...pendingUsers.map((user) => _PendingUserCard(user: user)),
-                  const SizedBox(height: 32),
-                ],
                 _buildSectionHeader(
-                  'Active Users',
-                  '${activeUsers.length} users',
-                  AppColors.success,
+                  'Quản lý người dùng',
+                  '${sortedUsers.length} thành viên',
+                  AppColors.primary,
                 ),
                 const SizedBox(height: 16),
-                if (activeUsers.isEmpty)
+                if (sortedUsers.isEmpty)
                   const Center(
                     child: Text(
-                      'No active users',
+                      'Không có người dùng nào',
                       style: TextStyle(color: AppColors.textDarkSecondary),
                     ),
                   )
                 else
-                  ...activeUsers.map((user) => _ActiveUserCard(user: user)),
+                  ...sortedUsers.map((user) => _ActiveUserCard(user: user)),
               ],
             ),
           ),
@@ -121,190 +115,31 @@ class UserManagementScreen extends ConsumerWidget {
   }
 }
 
-/// Card for pending user - with approve/reject actions
-class _PendingUserCard extends ConsumerWidget {
+/// Dialog for editing user role and assignments
+class _EditUserDialog extends ConsumerStatefulWidget {
   final UserModel user;
 
-  const _PendingUserCard({required this.user});
+  const _EditUserDialog({required this.user});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceDark,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.warning.withValues(alpha: 0.3),
-          width: 2,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: AppColors.warning.withValues(alpha: 0.2),
-                child: Text(
-                  user.displayName?.substring(0, 1).toUpperCase() ?? 'U',
-                  style: const TextStyle(
-                    color: AppColors.warning,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      user.displayName ?? 'Unknown',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      user.email,
-                      style: const TextStyle(
-                        color: AppColors.textDarkSecondary,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.warning.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text(
-                  'PENDING',
-                  style: TextStyle(
-                    color: AppColors.warning,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => _showRejectDialog(context, ref),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.error,
-                    side: const BorderSide(color: AppColors.error),
-                  ),
-                  child: const Text('Reject'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => _showApproveDialog(context, ref),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.success,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Approve'),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showApproveDialog(BuildContext context, WidgetRef ref) {
-    showDialog(
-      context: context,
-      builder: (context) => _ApproveUserDialog(user: user),
-    );
-  }
-
-  void _showRejectDialog(BuildContext context, WidgetRef ref) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surfaceDark,
-        title: const Text('Reject User?', style: TextStyle(color: Colors.white)),
-        content: Text(
-          'Are you sure you want to reject ${user.displayName}?',
-          style: const TextStyle(color: AppColors.textDarkSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                final userRepo = ref.read(userRepositoryProvider);
-                await userRepo.deleteUser(user.id);
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('User rejected'),
-                      backgroundColor: AppColors.success,
-                    ),
-                  );
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Error: $e'),
-                      backgroundColor: AppColors.error,
-                    ),
-                  );
-                }
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
-            ),
-            child: const Text('Reject'),
-          ),
-        ],
-      ),
-    );
-  }
+  ConsumerState<_EditUserDialog> createState() => _EditUserDialogState();
 }
 
-/// Dialog for approving user and assigning role
-class _ApproveUserDialog extends ConsumerStatefulWidget {
-  final UserModel user;
-
-  const _ApproveUserDialog({required this.user});
-
-  @override
-  ConsumerState<_ApproveUserDialog> createState() => _ApproveUserDialogState();
-}
-
-class _ApproveUserDialogState extends ConsumerState<_ApproveUserDialog> {
-  UserRole _selectedRole = UserRole.viewer;
+class _EditUserDialogState extends ConsumerState<_EditUserDialog> {
+  late UserRole _selectedRole;
   String? _selectedArtistId;
   List<String> _selectedManagedArtistIds = [];
   bool _isLoading = false;
+  bool _canViewRevenue = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedRole = widget.user.role == UserRole.guest ? UserRole.viewer : widget.user.role;
+    _selectedArtistId = widget.user.artistId;
+    _selectedManagedArtistIds = List.from(widget.user.managedArtistIds);
+    _canViewRevenue = widget.user.canViewRevenue;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -312,7 +147,7 @@ class _ApproveUserDialogState extends ConsumerState<_ApproveUserDialog> {
 
     return AlertDialog(
       backgroundColor: AppColors.surfaceDark,
-      title: const Text('Approve User', style: TextStyle(color: Colors.white)),
+      title: const Text('Phân quyền người dùng', style: TextStyle(color: Colors.white)),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -335,7 +170,7 @@ class _ApproveUserDialogState extends ConsumerState<_ApproveUserDialog> {
             ),
             const SizedBox(height: 24),
             const Text(
-              'Select Role:',
+              'Chọn vai trò:',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 14,
@@ -343,16 +178,15 @@ class _ApproveUserDialogState extends ConsumerState<_ApproveUserDialog> {
               ),
             ),
             const SizedBox(height: 8),
-            ...[UserRole.viewer, UserRole.editor, UserRole.superEditor].map((role) {
+            ...[UserRole.viewer, UserRole.editor, UserRole.superEditor, UserRole.guest].map((role) {
               return RadioListTile<UserRole>(
                 value: role,
                 groupValue: _selectedRole,
                 onChanged: (value) {
                   setState(() {
                     _selectedRole = value!;
-                    // Reset selections when role changes
-                    _selectedArtistId = null;
-                    _selectedManagedArtistIds = [];
+                    if (_selectedRole != UserRole.viewer) _selectedArtistId = null;
+                    if (_selectedRole != UserRole.editor) _selectedManagedArtistIds = [];
                   });
                 },
                 title: Text(
@@ -372,7 +206,7 @@ class _ApproveUserDialogState extends ConsumerState<_ApproveUserDialog> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Assign Artist:',
+                        'Gán nghệ sĩ:',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 14,
@@ -385,7 +219,7 @@ class _ApproveUserDialogState extends ConsumerState<_ApproveUserDialog> {
                         dropdownColor: AppColors.surfaceDark,
                         style: const TextStyle(color: Colors.white),
                         decoration: const InputDecoration(
-                          hintText: 'Select artist',
+                          hintText: 'Chọn nghệ sĩ',
                           hintStyle: TextStyle(color: AppColors.textDarkSecondary),
                         ),
                         items: artists.map((artist) {
@@ -414,7 +248,7 @@ class _ApproveUserDialogState extends ConsumerState<_ApproveUserDialog> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Assign Managed Artists:',
+                        'Quản lý nghệ sĩ:',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 14,
@@ -451,16 +285,67 @@ class _ApproveUserDialogState extends ConsumerState<_ApproveUserDialog> {
                 loading: () => const CircularProgressIndicator(),
                 error: (_, __) => const Text('Error loading artists'),
               ),
+            // Quyền xem doanh thu — chỉ hiện khi role là Editor
+            if (_selectedRole == UserRole.editor) ...[
+              const SizedBox(height: 16),
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.success.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: _canViewRevenue
+                        ? AppColors.success.withValues(alpha: 0.4)
+                        : AppColors.borderDark,
+                  ),
+                ),
+                child: SwitchListTile(
+                  value: _canViewRevenue,
+                  onChanged: (v) => setState(() => _canViewRevenue = v),
+                  activeColor: AppColors.success,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  title: const Text(
+                    'Xem doanh thu',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  subtitle: Text(
+                    _canViewRevenue
+                        ? 'Được phép xem doanh thu nghệ sĩ quản lý'
+                        : 'Không được xem doanh thu',
+                    style: TextStyle(
+                      color: _canViewRevenue
+                          ? AppColors.success
+                          : AppColors.textDarkSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                  secondary: Icon(
+                    Icons.bar_chart_rounded,
+                    color: _canViewRevenue
+                        ? AppColors.success
+                        : AppColors.textDarkSecondary,
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
       actions: [
         TextButton(
           onPressed: _isLoading ? null : () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: const Text('Hủy'),
         ),
+        if (widget.user.role != UserRole.superEditor)
+          TextButton(
+            onPressed: _isLoading ? null : _deleteUser,
+            child: const Text('Xóa', style: TextStyle(color: AppColors.error)),
+          ),
         ElevatedButton(
-          onPressed: _isLoading ? null : _approve,
+          onPressed: _isLoading ? null : _save,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.success,
           ),
@@ -473,18 +358,59 @@ class _ApproveUserDialogState extends ConsumerState<_ApproveUserDialog> {
                     valueColor: AlwaysStoppedAnimation(Colors.white),
                   ),
                 )
-              : const Text('Approve'),
+              : const Text('Cập nhật'),
         ),
       ],
     );
   }
 
-  Future<void> _approve() async {
+  Future<void> _deleteUser() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surfaceDark,
+        title: const Text('Xóa người dùng?', style: TextStyle(color: Colors.white)),
+        content: Text('Bạn có chắc chắn muốn xóa ${widget.user.displayName}?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final userRepo = ref.read(userRepositoryProvider);
+      await userRepo.deleteUser(widget.user.id);
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đã xóa người dùng')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _save() async {
     // Validation
     if (_selectedRole == UserRole.viewer && _selectedArtistId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please select an artist for Viewer'),
+          content: Text('Vui lòng chọn nghệ sĩ cho vai trò Nghệ sĩ'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -494,7 +420,7 @@ class _ApproveUserDialogState extends ConsumerState<_ApproveUserDialog> {
     if (_selectedRole == UserRole.editor && _selectedManagedArtistIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please select at least one managed artist for Editor'),
+          content: Text('Vui lòng chọn ít nhất một nghệ sĩ quản lý'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -509,9 +435,11 @@ class _ApproveUserDialogState extends ConsumerState<_ApproveUserDialog> {
       final updatedUser = widget.user.copyWith(
         role: _selectedRole,
         artistId: _selectedRole == UserRole.viewer ? _selectedArtistId : null,
-        managedArtistIds: _selectedRole == UserRole.editor 
-            ? _selectedManagedArtistIds 
+        managedArtistIds: _selectedRole == UserRole.editor
+            ? _selectedManagedArtistIds
             : [],
+        // Chỉ Editor mới có ý nghĩa; các role khác reset về false
+        canViewRevenue: _selectedRole == UserRole.editor ? _canViewRevenue : false,
         updatedAt: DateTime.now(),
       );
 
@@ -521,7 +449,7 @@ class _ApproveUserDialogState extends ConsumerState<_ApproveUserDialog> {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${widget.user.displayName} approved as ${_selectedRole.displayName}'),
+            content: Text('Đã cập nhật vai trò: ${_selectedRole.displayName}'),
             backgroundColor: AppColors.success,
           ),
         );
@@ -530,7 +458,7 @@ class _ApproveUserDialogState extends ConsumerState<_ApproveUserDialog> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: $e'),
+            content: Text('Lỗi: $e'),
             backgroundColor: AppColors.error,
           ),
         );
@@ -604,23 +532,67 @@ class _ActiveUserCard extends ConsumerWidget {
               ],
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 8,
-              vertical: 4,
-            ),
-            decoration: BoxDecoration(
-              color: _getRoleColor(user.role).withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              user.role.displayName.toUpperCase(),
-              style: TextStyle(
-                color: _getRoleColor(user.role),
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _getRoleColor(user.role).withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  user.role.displayName.toUpperCase(),
+                  style: TextStyle(
+                    color: _getRoleColor(user.role),
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
-            ),
+              if (user.role == UserRole.editor) ...[
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: user.canViewRevenue
+                        ? AppColors.success.withValues(alpha: 0.15)
+                        : AppColors.textDarkSecondary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: user.canViewRevenue
+                          ? AppColors.success.withValues(alpha: 0.4)
+                          : AppColors.borderDark,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        user.canViewRevenue
+                            ? Icons.bar_chart_rounded
+                            : Icons.bar_chart_outlined,
+                        size: 10,
+                        color: user.canViewRevenue
+                            ? AppColors.success
+                            : AppColors.textDarkSecondary,
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        user.canViewRevenue ? 'Xem DT' : 'No DT',
+                        style: TextStyle(
+                          color: user.canViewRevenue
+                              ? AppColors.success
+                              : AppColors.textDarkSecondary,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
           ),
           const SizedBox(width: 8),
           IconButton(
@@ -629,7 +601,7 @@ class _ActiveUserCard extends ConsumerWidget {
             onPressed: () {
               showDialog(
                 context: context,
-                builder: (context) => _ApproveUserDialog(user: user),
+                builder: (context) => _EditUserDialog(user: user),
               );
             },
           ),
@@ -692,7 +664,7 @@ class _ActiveUserCard extends ConsumerWidget {
         return AppColors.warning;
       case UserRole.superEditor:
         return AppColors.error;
-      case UserRole.pending:
+      case UserRole.guest:
         return AppColors.textDarkSecondary;
     }
   }

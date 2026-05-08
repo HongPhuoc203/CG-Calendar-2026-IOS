@@ -26,6 +26,11 @@ class UserModel with _$UserModel {
     // Hỗ trợ đăng nhập đồng thời trên nhiều thiết bị.
     @Default([]) List<String> fcmTokens,
 
+    /// Quyền xem doanh thu — chỉ áp dụng cho EDITOR.
+    /// SuperEditor luôn thấy; Viewer/Guest không thấy.
+    /// Quản lí tổng (superEditor) có thể bật/tắt per-editor.
+    @Default(false) bool canViewRevenue,
+
     DateTime? createdAt,
     DateTime? updatedAt,
   }) = _UserModel;
@@ -44,7 +49,7 @@ class UserModel with _$UserModel {
       email: email,
       displayName: displayName,
       photoUrl: photoUrl,
-      role: UserRole.pending,
+      role: UserRole.guest,
       status: UserStatus.active,
       fcmTokens: [],
       createdAt: DateTime.now(),
@@ -63,7 +68,8 @@ extension UserModelX on UserModel {
       'status': status.toFirestore(),
       'artistId': artistId,
       'managedArtistIds': managedArtistIds,
-      'fcmTokens': fcmTokens, // ✅ Lưu list
+      'fcmTokens': fcmTokens,
+      'canViewRevenue': canViewRevenue,
       'createdAt': createdAt?.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
     };
@@ -83,6 +89,7 @@ extension UserModelX on UserModel {
       // ✅ Backward-compatible: đọc được cả field cũ 'fcmToken' (String)
       // lẫn field mới 'fcmTokens' (List) — không cần migration script.
       fcmTokens: _parseFcmTokens(data),
+      canViewRevenue: data['canViewRevenue'] as bool? ?? false,
 
       createdAt: FirestoreHelpers.toDateTime(data['createdAt']),
       updatedAt: FirestoreHelpers.toDateTime(data['updatedAt']),

@@ -76,13 +76,13 @@ class UserRepository {
     try {
       final snapshot = await _firestoreService.getCollection(
         AppConstants.usersCollection,
-        queryBuilder: (ref) => ref.where('role', isEqualTo: 'pending'),
+        queryBuilder: (ref) => ref.where('role', isEqualTo: 'guest'),
       );
       return snapshot.docs
           .map((doc) => UserModelX.fromFirestore(doc.data(), doc.id))
           .toList();
     } catch (e) {
-      throw FirestoreFailure('Lỗi lấy danh sách chờ duyệt: $e');
+      throw FirestoreFailure('Lỗi lấy danh sách khách: $e');
     }
   }
 

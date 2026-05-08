@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/enums/user_role.dart';
 import '../../core/utils/number_formatter.dart';
 import '../../data/models/dashboard_stats_model.dart';
 import '../../data/models/event_model.dart';
+import '../../providers/artists_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/dashboard_provider.dart';
 import '../../providers/events_provider.dart';
+import '../../data/models/artist_model.dart';
 import '../home/widgets/revenue_chart.dart';
 
 /// Revenue Screen - Detailed revenue analysis
@@ -17,13 +21,21 @@ class RevenueScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedTimeFrame = ref.watch(selectedRevenueTimeFrameProvider);
+    final selectedMonth = ref.watch(selectedRevenueMonthProvider);
     final revenueStats = ref.watch(revenueStatsProvider);
     final eventsAsync = ref.watch(eventsStreamProvider);
+    final artistsAsync = ref.watch(artistsStreamProvider);
     final userProfileAsync = ref.watch(currentUserProfileProvider);
-    final isViewer = userProfileAsync.maybeWhen(
-      data: (user) => user?.role == UserRole.viewer,
-      orElse: () => false,
-    );
+    final currentUser = userProfileAsync.asData?.value;
+    final isViewer = currentUser?.role == UserRole.viewer;
+    final isEditor = currentUser?.role == UserRole.editor;
+
+    // Editor chỉ vào được nếu được cấp quyền canViewRevenue
+    final hasRevenueAccess = switch (currentUser?.role) {
+      UserRole.superEditor => true,
+      UserRole.editor => currentUser?.canViewRevenue == true,
+      _ => false,
+    };
 
     return Scaffold(
       backgroundColor: AppColors.backgroundDark,
@@ -33,24 +45,202 @@ class RevenueScreen extends ConsumerWidget {
             // Header
             _buildHeader(context),
 
+            // Chặn Editor không có quyền
+            if (isEditor && !hasRevenueAccess)
+              Expanded(child: _buildNoPermission()),
+
+            if (!isEditor || hasRevenueAccess) ...[
             // Time Frame Selector
-            _buildTimeFrameSelector(ref, selectedTimeFrame),
+            _buildTimeFrameSelector(context, ref, selectedTimeFrame, selectedMonth),
 
             // Content
-            // Trong build(), truyền thêm selectedTimeFrame vào eventsAsync
             Expanded(
               child: revenueStats.when(
-                data: (stats) => _buildRevenueContent(
-                  context,
-                  stats,
-                  isViewer: isViewer,
-                  events: eventsAsync.value ?? [],
-                  selectedTimeFrame: selectedTimeFrame, // thêm dòng này
-                ),
+                data: (stats) {
+                  if (eventsAsync.isLoading || artistsAsync.isLoading) {
+                    return const Center(
+                      child: CircularProgressIndicator(color: AppColors.primary),
+                    );
+                  }
+
+                  final events = eventsAsync.value ?? [];
+                  final artists = artistsAsync.value ?? [];
+
+                  // 1. Tìm Artist ID của DBA để loại trừ
+                  final dbaArtist = artists.where((a) => a.name.trim().toUpperCase() == 'DBA').firstOrNull;
+                  final dbaId = dbaArtist?.id;
+
+                  // 2. Lọc sự kiện loại trừ DBA
+                  final filteredEvents = events.where((e) {
+                    final isDBA = (dbaId != null && e.artistIds.contains(dbaId)) || 
+                                 e.title.toUpperCase().contains('DBA');
+                    return !isDBA;
+                  }).toList();
+
+                  // 3. Tính toán lại stats loại trừ DBA
+                  double totalRevenue = 0;
+                  double totalExpenses = 0;
+                  Map<DateTime, RevenueByDate> revenueByDateMap = {};
+                  // artistId → {revenue, expenses, eventCount}
+                  Map<String, Map<String, dynamic>> artistBreakdown = {};
+
+                  // Lọc theo timeframe để đồng bộ chart và artist breakdown
+                  final now = DateTime.now();
+                  final displayEvents = filteredEvents.where((e) {
+                    final eventDate = DateTime(e.startTime.year, e.startTime.month, e.startTime.day);
+                    switch (selectedTimeFrame) {
+                      case RevenueTimeFrame.today:
+                        final today = DateTime(now.year, now.month, now.day);
+                        return eventDate.isAtSameMomentAs(today);
+                      case RevenueTimeFrame.week:
+                        final startOfWeek = DateTime(now.year, now.month, now.day).subtract(Duration(days: now.weekday - 1));
+                        final endOfWeek = startOfWeek.add(const Duration(days: 6));
+                        return !eventDate.isBefore(startOfWeek) && !eventDate.isAfter(endOfWeek);
+                      case RevenueTimeFrame.month:
+                        return e.startTime.year == selectedMonth.year && e.startTime.month == selectedMonth.month;
+                      case RevenueTimeFrame.alltime:
+                        return true;
+                      default:
+                        return e.startTime.year == selectedMonth.year && e.startTime.month == selectedMonth.month;
+                    }
+                  }).toList();
+
+                  for (var e in displayEvents) {
+                    if (e.finance != null) {
+                      final rev = e.finance!.revenue;
+                      final operationalExp = e.finance!.totalExpenses;
+                      final artistShare = rev * 0.6;
+                      final totalOutgoings = operationalExp + artistShare;
+
+                      totalRevenue += rev;
+                      totalExpenses += operationalExp;
+
+                      // revenueByDate
+                      final dateKey = DateTime(e.startTime.year, e.startTime.month, e.startTime.day);
+                      final existing = revenueByDateMap[dateKey];
+                      if (existing != null) {
+                        revenueByDateMap[dateKey] = existing.copyWith(
+                          revenue: existing.revenue + rev,
+                          expenses: existing.expenses + totalOutgoings,
+                        );
+                      } else {
+                        revenueByDateMap[dateKey] = RevenueByDate(
+                          date: dateKey,
+                          revenue: rev,
+                          expenses: totalOutgoings,
+                        );
+                      }
+
+                      // revenueByArtist — rebuild từ displayEvents để đồng bộ timeframe
+                      for (final artistId in e.artistIds) {
+                        if (artistBreakdown.containsKey(artistId)) {
+                          artistBreakdown[artistId]!['revenue'] =
+                              (artistBreakdown[artistId]!['revenue'] as double) + rev;
+                          artistBreakdown[artistId]!['expenses'] =
+                              (artistBreakdown[artistId]!['expenses'] as double) + operationalExp;
+                          artistBreakdown[artistId]!['eventCount'] =
+                              (artistBreakdown[artistId]!['eventCount'] as int) + 1;
+                        } else {
+                          artistBreakdown[artistId] = {
+                            'revenue': rev,
+                            'expenses': operationalExp,
+                            'eventCount': 1,
+                          };
+                        }
+                      }
+                    }
+                  }
+
+                  final revenueByDateList = revenueByDateMap.values.toList()
+                    ..sort((a, b) => a.date.compareTo(b.date));
+
+                  // Map artistBreakdown → RevenueByArtist dùng danh sách artists đã load
+                  final revenueByArtist = artistBreakdown.entries
+                      .map((entry) {
+                        final artist = artists.cast<ArtistModel?>().firstWhere(
+                          (a) => a?.id == entry.key,
+                          orElse: () => null,
+                        );
+                        if (artist == null) return null;
+                        final name = artist.name.trim();
+                        if (name.toUpperCase() == 'DBA' || artist.id == dbaId) return null;
+                        return RevenueByArtist(
+                          artistId: entry.key,
+                          artistName: name,
+                          revenue: entry.value['revenue'] as double,
+                          expenses: entry.value['expenses'] as double,
+                          eventCount: entry.value['eventCount'] as int,
+                        );
+                      })
+                      .whereType<RevenueByArtist>()
+                      .toList()
+                    ..sort((a, b) => b.revenue.compareTo(a.revenue));
+
+                  final filteredStats = RevenueStatsModel(
+                    totalRevenue: totalRevenue,
+                    totalExpenses: totalExpenses,
+                    revenueByDate: revenueByDateList,
+                    revenueByArtist: revenueByArtist,
+                  );
+
+                  return _buildRevenueContent(
+                    context,
+                    filteredStats,
+                    isViewer: isViewer,
+                    events: filteredEvents,
+                    selectedTimeFrame: selectedTimeFrame,
+                    selectedMonth: selectedMonth,
+                  );
+                },
                 loading: () => const Center(
                   child: CircularProgressIndicator(color: AppColors.primary),
                 ),
                 error: (error, stack) => _buildError(error.toString()),
+              ),
+            ),
+            ], // end !isEditor || hasRevenueAccess
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoPermission() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.lock_outline_rounded,
+                size: 48,
+                color: AppColors.error,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Không có quyền truy cập',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Tính năng xem doanh thu chưa được cấp phép.\nVui lòng liên hệ Quản lý tổng.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.textDarkSecondary.withValues(alpha: 0.8),
+                fontSize: 14,
+                height: 1.5,
               ),
             ),
           ],
@@ -85,18 +275,91 @@ class RevenueScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildTimeFrameSelector(WidgetRef ref, RevenueTimeFrame selectedTimeFrame) {
+  Widget _buildTimeFrameSelector(BuildContext context, WidgetRef ref, RevenueTimeFrame selectedTimeFrame, DateTime selectedMonth) {
+    final displayFrames = [
+      RevenueTimeFrame.month,
+      RevenueTimeFrame.alltime,
+    ];
     return Container(
       padding: const EdgeInsets.all(16),
       child: Row(
-        children: RevenueTimeFrame.values.take(3).map((timeFrame) {
+        children: displayFrames.map((timeFrame) {
           final isSelected = selectedTimeFrame == timeFrame;
+          String displayName = timeFrame.displayName;
+          
+          if (timeFrame == RevenueTimeFrame.month) {
+            displayName = 'Tháng ${DateFormat('MM/yyyy').format(selectedMonth)}';
+          }
+
           return Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: InkWell(
                 onTap: () {
-                  ref.read(selectedRevenueTimeFrameProvider.notifier).state = timeFrame;
+                  if (timeFrame == RevenueTimeFrame.month && isSelected) {
+                    showModalBottomSheet(
+                      context: context,
+                      backgroundColor: AppColors.surfaceDark,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                      ),
+                      builder: (context) => Container(
+                        height: 350,
+                        padding: const EdgeInsets.only(bottom: 20),
+                        child: Column(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: const BoxDecoration(
+                                border: Border(bottom: BorderSide(color: AppColors.borderDark)),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('Hủy', style: TextStyle(color: Colors.white70)),
+                                  ),
+                                  const Text(
+                                    'Chọn tháng/năm',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('Xong', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Expanded(
+                              child: CupertinoTheme(
+                                data: const CupertinoThemeData(
+                                  brightness: Brightness.dark,
+                                  textTheme: CupertinoTextThemeData(
+                                    dateTimePickerTextStyle: TextStyle(color: Colors.white, fontSize: 22),
+                                  ),
+                                ),
+                                child: CupertinoDatePicker(
+                                  mode: CupertinoDatePickerMode.monthYear,
+                                  initialDateTime: selectedMonth,
+                                  onDateTimeChanged: (DateTime newDateTime) {
+                                    ref.read(selectedRevenueMonthProvider.notifier).state = 
+                                        DateTime(newDateTime.year, newDateTime.month);
+                                  },
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  } else {
+                    ref.read(selectedRevenueTimeFrameProvider.notifier).state = timeFrame;
+                  }
                 },
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
@@ -109,14 +372,23 @@ class RevenueScreen extends ConsumerWidget {
                       width: 1,
                     ),
                   ),
-                  child: Text(
-                    timeFrame.displayName,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : AppColors.textDarkSecondary,
-                      fontSize: 13,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                    ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        displayName,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : AppColors.textDarkSecondary,
+                          fontSize: 13,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                        ),
+                      ),
+                      if (timeFrame == RevenueTimeFrame.month && isSelected) ...[
+                        const SizedBox(width: 4),
+                        const Icon(Icons.arrow_drop_down, color: Colors.white, size: 18),
+                      ],
+                    ],
                   ),
                 ),
               ),
@@ -133,9 +405,10 @@ class RevenueScreen extends ConsumerWidget {
     required bool isViewer,
     List<EventModel> events = const [],
     required RevenueTimeFrame selectedTimeFrame,
+    required DateTime selectedMonth,
   }) {
     if (isViewer) {
-      return _buildViewerRevenueContent(stats, events, selectedTimeFrame);
+      return _buildViewerRevenueContent(stats, events, selectedTimeFrame, selectedMonth);
     }
 
     return RefreshIndicator(
@@ -159,7 +432,7 @@ class RevenueScreen extends ConsumerWidget {
 
             // Revenue by Artist
             if (stats.revenueByArtist.isNotEmpty) ...[
-              _buildRevenueByArtist(stats, events, selectedTimeFrame),
+              _buildRevenueByArtist(stats, events, selectedTimeFrame, selectedMonth),
               const SizedBox(height: 24),
             ],
 
@@ -171,9 +444,7 @@ class RevenueScreen extends ConsumerWidget {
     );
   }
 
-  // ─── VIEWER UI ───────────────────────────────────────────────────────────────
-
-  Widget _buildViewerRevenueContent(RevenueStatsModel stats, List<EventModel> events, RevenueTimeFrame selectedTimeFrame) {
+  Widget _buildViewerRevenueContent(RevenueStatsModel stats, List<EventModel> events, RevenueTimeFrame selectedTimeFrame, DateTime selectedMonth) {
       final now = DateTime.now();
 
       // Filter events theo timeframe đã chọn
@@ -189,9 +460,11 @@ class RevenueScreen extends ConsumerWidget {
               return e.startTime.isAfter(startOfWeek.subtract(const Duration(days: 1))) &&
                   e.startTime.isBefore(endOfWeek.add(const Duration(days: 1)));
             case RevenueTimeFrame.month:
-              return e.startTime.year == now.year && e.startTime.month == now.month;
+              return e.startTime.year == selectedMonth.year && e.startTime.month == selectedMonth.month;
+            case RevenueTimeFrame.alltime:
+              return true;
             case RevenueTimeFrame.custom:
-              return e.startTime.year == now.year && e.startTime.month == now.month;
+              return e.startTime.year == selectedMonth.year && e.startTime.month == selectedMonth.month;
           }
         }).toList();
 
@@ -393,8 +666,8 @@ class RevenueScreen extends ConsumerWidget {
 
   Widget _buildSummaryCards(RevenueStatsModel stats) {
     final artistShare = stats.totalRevenue * 0.6;
-    final totalExpenses = stats.totalExpenses + artistShare; // Cộng thêm tiền nghệ sĩ
-    final netIncome = stats.totalRevenue - totalExpenses;
+    final totalOutgoings = stats.totalExpenses + artistShare; 
+    final netIncome = stats.totalRevenue - totalOutgoings;
 
     return Row(
       children: [
@@ -410,7 +683,7 @@ class RevenueScreen extends ConsumerWidget {
         Expanded(
           child: _buildSummaryCard(
             'Tổng chi',
-            NumberFormatter.formatCurrency(totalExpenses), // dùng totalExpenses mới
+            NumberFormatter.formatCurrency(totalOutgoings),
             AppColors.error,
             Icons.arrow_downward,
           ),
@@ -465,7 +738,7 @@ class RevenueScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildRevenueByArtist(RevenueStatsModel stats, List<EventModel> events, RevenueTimeFrame selectedTimeFrame) {
+  Widget _buildRevenueByArtist(RevenueStatsModel stats, List<EventModel> events, RevenueTimeFrame selectedTimeFrame, DateTime selectedMonth) {
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -504,11 +777,13 @@ class RevenueScreen extends ConsumerWidget {
                     return e.startTime.isAfter(startOfWeek.subtract(const Duration(days: 1))) &&
                         e.startTime.isBefore(endOfWeek.add(const Duration(days: 1)));
                   case RevenueTimeFrame.month:
-                    return e.startTime.year == now.year &&
-                        e.startTime.month == now.month;
+                    return e.startTime.year == selectedMonth.year &&
+                        e.startTime.month == selectedMonth.month;
+                  case RevenueTimeFrame.alltime:
+                    return true;
                   case RevenueTimeFrame.custom:
-                    return e.startTime.year == now.year &&
-                        e.startTime.month == now.month;
+                    return e.startTime.year == selectedMonth.year &&
+                        e.startTime.month == selectedMonth.month;
                 }
               }).toList();
 
@@ -575,26 +850,32 @@ class RevenueScreen extends ConsumerWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 4,
-                            height: 4,
-                            margin: const EdgeInsets.only(right: 6),
-                            decoration: BoxDecoration(
-                              color: AppColors.textDarkSecondary,
-                              shape: BoxShape.circle,
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 4,
+                              height: 4,
+                              margin: const EdgeInsets.only(right: 6),
+                              decoration: BoxDecoration(
+                                color: AppColors.textDarkSecondary,
+                                shape: BoxShape.circle,
+                              ),
                             ),
-                          ),
-                          Text(
-                            event.title,
-                            style: const TextStyle(
-                              color: AppColors.textDarkSecondary,
-                              fontSize: 12,
+                            Expanded(
+                              child: Text(
+                                event.title,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppColors.textDarkSecondary,
+                                  fontSize: 12,
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
+                      const SizedBox(width: 8),
                       Text(
                         NumberFormatter.formatCurrency(eventNetAmount),
                         style: TextStyle(
@@ -651,7 +932,7 @@ class RevenueScreen extends ConsumerWidget {
           ),
           const Divider(color: AppColors.borderDark, height: 24),
           _buildDetailRow(
-            'Nghệ sĩ nhận (60%)',
+            'Nghệ sĩ nhận',
             '- ${NumberFormatter.formatCurrency(artistShare)}',
             AppColors.warning, // hoặc AppColors.primary tùy bạn
           ),

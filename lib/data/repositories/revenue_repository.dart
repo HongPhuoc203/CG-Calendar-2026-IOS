@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/event_model.dart';
 import '../models/dashboard_stats_model.dart';
 import '../services/firestore_service.dart';
@@ -21,9 +22,9 @@ class RevenueRepository {
       final snapshot = await _firestoreService.getCollection(
         AppConstants.eventsCollection,
         queryBuilder: (ref) {
-          var query = ref
-              .where('startTime', isGreaterThanOrEqualTo: fromDate.toIso8601String())
-              .where('startTime', isLessThanOrEqualTo: toDate.toIso8601String());
+          Query<Map<String, dynamic>> query = ref
+              .where('startTime', isGreaterThanOrEqualTo: fromDate)
+              .where('startTime', isLessThanOrEqualTo: toDate);
 
           if (artistIds.isNotEmpty) {
             query = query.where('artistIds', arrayContainsAny: artistIds);
@@ -169,6 +170,107 @@ class RevenueRepository {
       fromDate: startOfDay,
       toDate: endOfDay,
     );
+  }
+
+  /// Get all-time revenue (no date constraints)
+  Future<RevenueStatsModel> getAllTimeRevenue({
+    required List<String> artistIds,
+  }) async {
+    try {
+      final snapshot = await _firestoreService.getCollection(
+        AppConstants.eventsCollection,
+        queryBuilder: (ref) {
+          Query<Map<String, dynamic>> query = ref; // Không where startTime
+
+          if (artistIds.isNotEmpty) {
+            // Firestore array-contains-any supports up to 10 elements
+            if (artistIds.length <= 10) {
+              query = query.where('artistIds', arrayContainsAny: artistIds);
+            } else {
+              query = query.where('artistIds', arrayContainsAny: artistIds.take(10).toList());
+            }
+          }
+
+          return query;
+        },
+      );
+
+      final events = snapshot.docs
+          .map((doc) => EventModelX.fromFirestore(doc.data(), doc.id))
+          .toList();
+
+      // Phần tính toán y hệt như getRevenueStats
+      double totalRevenue = 0;
+      double totalExpenses = 0;
+      Map<DateTime, RevenueByDate> revenueByDateMap = {};
+      Map<String, RevenueByArtistData> revenueByArtistMap = {};
+
+      for (final event in events) {
+        if (event.finance != null) {
+          final revenue = event.finance!.revenue;
+          final expenses = event.finance!.totalExpenses;
+
+          totalRevenue += revenue;
+          totalExpenses += expenses;
+
+          final dateKey = DateTime(
+            event.startTime.year,
+            event.startTime.month,
+            event.startTime.day,
+          );
+
+          if (revenueByDateMap.containsKey(dateKey)) {
+            final existing = revenueByDateMap[dateKey]!;
+            revenueByDateMap[dateKey] = RevenueByDate(
+              date: dateKey,
+              revenue: existing.revenue + revenue,
+              expenses: existing.expenses + expenses,
+            );
+          } else {
+            revenueByDateMap[dateKey] = RevenueByDate(
+              date: dateKey,
+              revenue: revenue,
+              expenses: expenses,
+            );
+          }
+
+          for (final artistId in event.artistIds) {
+            if (revenueByArtistMap.containsKey(artistId)) {
+              final existing = revenueByArtistMap[artistId]!;
+              revenueByArtistMap[artistId] = RevenueByArtistData(
+                artistId: artistId,
+                revenue: existing.revenue + revenue,
+                expenses: existing.expenses + expenses,
+                eventCount: existing.eventCount + 1,
+              );
+            } else {
+              revenueByArtistMap[artistId] = RevenueByArtistData(
+                artistId: artistId,
+                revenue: revenue,
+                expenses: expenses,
+                eventCount: 1,
+              );
+            }
+          }
+        }
+      }
+
+      final revenueByDate = revenueByDateMap.values.toList()
+        ..sort((a, b) => a.date.compareTo(b.date));
+
+      final revenueByArtist = await _getRevenueByArtistWithNames(
+        revenueByArtistMap.values.toList(),
+      );
+
+      return RevenueStatsModel(
+        totalRevenue: totalRevenue,
+        totalExpenses: totalExpenses,
+        revenueByDate: revenueByDate,
+        revenueByArtist: revenueByArtist,
+      );
+    } catch (e) {
+      throw FirestoreFailure('Lỗi lấy tổng doanh thu: $e');
+    }
   }
 
   /// Helper to get artist names

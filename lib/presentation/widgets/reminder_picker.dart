@@ -52,11 +52,18 @@ class ReminderOptions {
     unit: ReminderUnit.hours,
   );
 
+  static const oneHour = ReminderOption(
+    label: '1 giờ trước',
+    value: 1,
+    unit: ReminderUnit.hours,
+  );
+
   static const List<ReminderOption> quickOptions = [
     fiveDays,
     twoDays,
     oneDay,
     twelveHours,
+    oneHour,
   ];
 }
 

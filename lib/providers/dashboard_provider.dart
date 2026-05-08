@@ -5,6 +5,9 @@ import '../core/enums/user_role.dart';
 import 'repositories_providers.dart';
 import 'auth_provider.dart';
 import 'notifications_provider.dart';
+import 'events_provider.dart';
+import 'artists_provider.dart';
+
 
 /// Provider for Dashboard Statistics
 final dashboardStatsProvider = FutureProvider.autoDispose<DashboardStatsModel>((ref) async {
@@ -21,7 +24,7 @@ final dashboardStatsProvider = FutureProvider.autoDispose<DashboardStatsModel>((
   // Determine artist IDs based on role
   List<String> artistIds = [];
   switch (user.role) {
-    case UserRole.pending:
+    case UserRole.guest:
       artistIds = [];
       break;
     case UserRole.viewer:
@@ -84,7 +87,7 @@ final urgentEventsProvider = FutureProvider.autoDispose<List<EventModel>>((ref) 
 
   List<String> artistIds = [];
   switch (user.role) {
-    case UserRole.pending:
+    case UserRole.guest:
       return [];
     case UserRole.viewer:
       if (user.artistId != null) {
@@ -115,7 +118,7 @@ final todayEventsProvider = FutureProvider.autoDispose<List<EventModel>>((ref) a
 
   List<String>? artistIds;
   switch (user.role) {
-    case UserRole.pending:
+    case UserRole.guest:
       return [];
     case UserRole.viewer:
       if (user.artistId != null) {
@@ -143,7 +146,7 @@ final upcomingEventsProvider = FutureProvider.autoDispose<List<EventModel>>((ref
 
   List<String> artistIds = [];
   switch (user.role) {
-    case UserRole.pending:
+    case UserRole.guest:
       return [];
     case UserRole.viewer:
       if (user.artistId != null) {
@@ -169,6 +172,7 @@ enum RevenueTimeFrame {
   today,
   week,
   month,
+  alltime,
   custom;
 
   String get displayName {
@@ -179,6 +183,8 @@ enum RevenueTimeFrame {
         return 'Tuần này';
       case RevenueTimeFrame.month:
         return 'Tháng này';
+      case RevenueTimeFrame.alltime:
+        return 'Tất cả';
       case RevenueTimeFrame.custom:
         return 'Tùy chỉnh';
     }
@@ -190,11 +196,17 @@ final selectedRevenueTimeFrameProvider = StateProvider<RevenueTimeFrame>((ref) {
   return RevenueTimeFrame.month;
 });
 
+/// State provider for selected revenue month (when time frame is month)
+final selectedRevenueMonthProvider = StateProvider<DateTime>((ref) {
+  return DateTime.now();
+});
+
 /// Provider for revenue statistics based on time frame
 final revenueStatsProvider = FutureProvider.autoDispose<RevenueStatsModel>((ref) async {
   final revenueRepository = ref.watch(revenueRepositoryProvider);
   final userProfileAsync = ref.watch(currentUserProfileProvider);
   final timeFrame = ref.watch(selectedRevenueTimeFrameProvider);
+  final selectedMonth = ref.watch(selectedRevenueMonthProvider);
 
   final user = userProfileAsync.asData?.value;
   if (user == null) {
@@ -203,7 +215,7 @@ final revenueStatsProvider = FutureProvider.autoDispose<RevenueStatsModel>((ref)
 
   List<String> artistIds = [];
   switch (user.role) {
-    case UserRole.pending:
+    case UserRole.guest:
       return const RevenueStatsModel();
     case UserRole.viewer:
       if (user.artistId != null) {
@@ -224,10 +236,91 @@ final revenueStatsProvider = FutureProvider.autoDispose<RevenueStatsModel>((ref)
     case RevenueTimeFrame.week:
       return revenueRepository.getCurrentWeekRevenue(artistIds: artistIds);
     case RevenueTimeFrame.month:
-      return revenueRepository.getCurrentMonthRevenue(artistIds: artistIds);
+      final fromDate = DateTime(selectedMonth.year, selectedMonth.month, 1);
+      final toDate = DateTime(selectedMonth.year, selectedMonth.month + 1, 0, 23, 59, 59);
+      return revenueRepository.getRevenueStats(
+        artistIds: artistIds,
+        fromDate: fromDate,
+        toDate: toDate,
+      );
+    case RevenueTimeFrame.alltime:
+      return revenueRepository.getAllTimeRevenue(artistIds: artistIds);
     case RevenueTimeFrame.custom:
       return revenueRepository.getCurrentMonthRevenue(artistIds: artistIds);
   }
+});
+
+/// Dedicated provider for the Home screen revenue chart.
+///
+/// Mirrors the Revenue screen's "by month" logic exactly:
+///   • Watches [eventsStreamProvider] so it reacts to live event changes.
+///   • Excludes DBA events (same as Revenue screen).
+///   • Includes artist share (60 %) in [RevenueByDate.expenses] so the chart
+///     "Chi" line shows the real total outgoing — no double-counting needed
+///     inside [RevenueChart].
+///   • Always scoped to the current calendar month, independent of the
+///     Revenue screen's time-frame selector.
+final homeRevenueStatsProvider =
+    Provider.autoDispose<AsyncValue<RevenueStatsModel>>((ref) {
+  final eventsAsync = ref.watch(eventsStreamProvider);
+  final artistsAsync = ref.watch(artistsStreamProvider);
+
+  return eventsAsync.when(
+    loading: () => const AsyncValue.loading(),
+    error: (e, s) => AsyncValue.error(e, s),
+    data: (events) {
+      final artists = artistsAsync.value ?? [];
+      final now = DateTime.now();
+
+      // Identify DBA artist to exclude (same logic as Revenue screen)
+      final dbaArtist = artists
+          .where((a) => a.name.trim().toUpperCase() == 'DBA')
+          .firstOrNull;
+      final dbaId = dbaArtist?.id;
+
+      // Keep only current-month events, excluding DBA
+      final monthEvents = events.where((e) {
+        final isDBA = (dbaId != null && e.artistIds.contains(dbaId)) ||
+            e.title.toUpperCase().contains('DBA');
+        final isCurrentMonth =
+            e.startTime.year == now.year && e.startTime.month == now.month;
+        return !isDBA && isCurrentMonth;
+      }).toList();
+
+      // Build RevenueByDate with expenses = raw + artist share (60 %)
+      double totalRevenue = 0;
+      double totalExpenses = 0;
+      final Map<DateTime, RevenueByDate> byDateMap = {};
+
+      for (final e in monthEvents) {
+        if (e.finance == null) continue;
+        final rev = e.finance!.revenue;
+        final opExp = e.finance!.totalExpenses;
+        final totalOutgoings = opExp + rev * 0.6;
+
+        totalRevenue += rev;
+        totalExpenses += opExp;
+
+        final key = DateTime(e.startTime.year, e.startTime.month, e.startTime.day);
+        final existing = byDateMap[key];
+        byDateMap[key] = existing == null
+            ? RevenueByDate(date: key, revenue: rev, expenses: totalOutgoings)
+            : existing.copyWith(
+                revenue: existing.revenue + rev,
+                expenses: existing.expenses + totalOutgoings,
+              );
+      }
+
+      final revenueByDate = byDateMap.values.toList()
+        ..sort((a, b) => a.date.compareTo(b.date));
+
+      return AsyncValue.data(RevenueStatsModel(
+        totalRevenue: totalRevenue,
+        totalExpenses: totalExpenses,
+        revenueByDate: revenueByDate,
+      ));
+    },
+  );
 });
 
 /// Provider for custom date range revenue
@@ -243,7 +336,7 @@ final customDateRangeRevenueProvider = FutureProvider.autoDispose.family<Revenue
 
     List<String> artistIds = [];
     switch (user.role) {
-      case UserRole.pending:
+      case UserRole.guest:
         return const RevenueStatsModel();
       case UserRole.viewer:
         if (user.artistId != null) {

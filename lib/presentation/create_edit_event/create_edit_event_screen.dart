@@ -50,13 +50,22 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
   Map<String, dynamic> _customFields = {};
   List<EventLink> _links = [];
   List<ReminderOption> _reminderOptions = [];
-  
+
   // Finance data
   double _revenue = 0;
   List<ExpenseItem> _expenses = [];
+  int _artistSharePercent = 60; // Configurable, default 60%
 
   bool _isLoading = false;
   bool _isEditMode = false;
+
+
+  /// Artist name whose selection forces a specific share percentage.
+  static const String _tangDuyTanName = 'Tăng Duy Tân';
+  static const int _tangDuyTanSharePercent = 80;
+
+  static const String _dba = 'DBA';
+  static const int _dbaSharePercent = 0;
 
   @override
   void initState() {
@@ -65,13 +74,16 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
 
     if (_isEditMode) {
       _loadEventData();
-    } else if (widget.initialDate != null) {
-      // Pre-fill start/end times from the date the user tapped on the calendar.
-      // Preserve the time-of-day defaults (now / +1 h) but swap in the chosen date.
-      final now = DateTime.now();
-      final d = widget.initialDate!;
-      _startTime = DateTime(d.year, d.month, d.day, now.hour, now.minute);
-      _endTime = _startTime.add(const Duration(hours: 1));
+    } else {
+      // Default reminder: 1 hour before
+      _reminderOptions = [ReminderOptions.oneHour, ReminderOptions.oneDay];
+
+      if (widget.initialDate != null) {
+        final now = DateTime.now();
+        final d = widget.initialDate!;
+        _startTime = DateTime(d.year, d.month, d.day, now.hour, now.minute);
+        _endTime = _startTime.add(const Duration(hours: 1));
+      }
     }
   }
 
@@ -89,24 +101,24 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
     _checklistItems = event.checklistItems.map((item) => item.copyWith()).toList();
     _customFields = Map.from(event.customFields);
     _links = event.links.map((link) => link.copyWith()).toList();
-    
+
     // Load finance data
     if (event.finance != null) {
       _revenue = event.finance!.revenue;
       _expenses = event.finance!.expenses.map((e) => e.copyWith()).toList();
+      _artistSharePercent = event.finance!.artistSharePercent;
     }
-    
-    // Load reminders
+
     _loadReminders();
   }
 
   Future<void> _loadReminders() async {
     if (!_isEditMode) return;
-    
+
     try {
       final reminderRepo = ref.read(reminderRepositoryProvider);
       final reminders = await reminderRepo.getRemindersByEventId(widget.event!.id);
-      
+
       setState(() {
         _reminderOptions = reminders.map((r) {
           return ReminderOption(
@@ -154,7 +166,6 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
     if (date == null || !mounted) return;
 
     if (_isAllDay) {
-      // All-day: fix times at 00:00 / 23:59 – no time picker needed
       setState(() {
         if (isStart) {
           _startTime = DateTime(date.year, date.month, date.day, 0, 0);
@@ -198,7 +209,6 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
 
         if (isStart) {
           _startTime = newDateTime;
-          // Auto-adjust end time if needed
           if (_endTime.isBefore(_startTime)) {
             _endTime = _startTime.add(const Duration(hours: 1));
           }
@@ -213,15 +223,15 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
     try {
       final eventTypeRepo = ref.read(eventTypeRepositoryProvider);
       final eventType = await eventTypeRepo.getEventTypeById(eventTypeId);
-      
+
       if (eventType != null && mounted) {
         setState(() {
           _checklistItems = eventType.defaultChecklistItems
               .map((item) => ChecklistItem(
-                    id: const Uuid().v4(),
-                    title: item,
-                    isCompleted: false,
-                  ))
+            id: const Uuid().v4(),
+            title: item,
+            isCompleted: false,
+          ))
               .toList();
         });
       }
@@ -340,7 +350,7 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
         final titleController = TextEditingController();
         final urlController = TextEditingController();
         String linkType = 'other';
-        
+
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
@@ -447,19 +457,17 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
       if (currentUser == null) throw Exception('User not authenticated');
 
       final eventRepo = ref.read(eventRepositoryProvider);
-      
-      final eventId = _isEditMode ? widget.event!.id : const Uuid().v4();
-      
-      // Create finance data if revenue or expenses exist
-      EventFinance? finance;
-      if (_revenue > 0 || _expenses.isNotEmpty) {
-        finance = EventFinance(
-          revenue: _revenue,
-          expenses: _expenses,
-        );
-      }
 
-      // Enforce canonical times for all-day events on save
+      final eventId = _isEditMode ? widget.event!.id : const Uuid().v4();
+
+      // Always persist finance so artistSharePercent is never lost,
+      // even when revenue and expenses are both zero.
+      final finance = EventFinance(
+        revenue: _revenue,
+        expenses: _expenses,
+        artistSharePercent: _artistSharePercent,
+      );
+
       final effectiveStart = _isAllDay
           ? DateTime(_startTime.year, _startTime.month, _startTime.day, 0, 0)
           : _startTime;
@@ -470,22 +478,22 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
       final event = EventModel(
         id: eventId,
         title: _titleController.text.trim(),
-        description: _descriptionController.text.trim().isEmpty 
-            ? null 
+        description: _descriptionController.text.trim().isEmpty
+            ? null
             : _descriptionController.text.trim(),
         startTime: effectiveStart,
         endTime: effectiveEnd,
         isAllDay: _isAllDay,
-        location: _locationController.text.trim().isEmpty 
-            ? null 
+        location: _locationController.text.trim().isEmpty
+            ? null
             : _locationController.text.trim(),
         artistIds: _selectedArtistIds,
         eventTypeId: _selectedEventTypeId!,
         checklistItems: _checklistItems,
         customFields: _customFields,
         links: _links,
-        notes: _notesController.text.trim().isEmpty 
-            ? null 
+        notes: _notesController.text.trim().isEmpty
+            ? null
             : _notesController.text.trim(),
         finance: finance,
         createdBy: _isEditMode ? widget.event!.createdBy : currentUser.uid,
@@ -499,19 +507,16 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
         await eventRepo.createEvent(event);
       }
 
-      // Save reminders
       await _saveReminders(event.id);
-      
-      // Force refresh events list (đảm bảo UI cập nhật ngay)
+
       ref.invalidate(eventsStreamProvider);
-      
-      // Small delay to ensure Firestore commits the data
+
       if (!_isEditMode && _reminderOptions.isNotEmpty) {
         await Future.delayed(const Duration(milliseconds: 500));
       }
 
       if (mounted) {
-        Navigator.pop(context, true); // Return true to indicate success
+        Navigator.pop(context, true);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(_isEditMode ? 'Đã cập nhật sự kiện' : 'Đã tạo sự kiện'),
@@ -542,7 +547,6 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
     final userProfileAsync = ref.watch(currentUserProfileProvider);
     final userProfile = userProfileAsync.value;
 
-    // Auto-select managed artists for editor when creating a new event
     ref.listen<AsyncValue<UserModel?>>(currentUserProfileProvider, (previous, next) {
       if (!_isEditMode && _selectedArtistIds.isEmpty) {
         next.whenData((user) {
@@ -555,9 +559,6 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
       }
     });
 
-    // Filter artists based on user role:
-    // - super_editor: sees all artists
-    // - editor: only sees their managed artists
     final filteredArtistsAsync = artistsAsync.whenData((artists) {
       if (userProfile == null) return <ArtistModel>[];
       if (userProfile.role.canManageSystem) return artists;
@@ -590,21 +591,21 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
             onPressed: _isLoading ? null : _save,
             child: _isLoading
                 ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation(Colors.white),
-                    ),
-                  )
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation(Colors.white),
+              ),
+            )
                 : const Text(
-                    'Lưu',
-                    style: TextStyle(
-                      color: AppColors.primary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+              'Lưu',
+              style: TextStyle(
+                color: AppColors.primary,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
           const SizedBox(width: 8),
         ],
@@ -616,7 +617,6 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Title
               _buildSectionTitle('Thông tin cơ bản'),
               const SizedBox(height: 16),
               _buildTextField(
@@ -637,10 +637,9 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                 hint: 'Nhập mô tả...',
                 maxLines: 3,
               ),
-              
+
               const SizedBox(height: 32),
-              
-              // Date & Time
+
               _buildSectionTitle('Thời gian'),
               const SizedBox(height: 16),
               _buildAllDayToggle(),
@@ -656,10 +655,9 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                 dateTime: _endTime,
                 onTap: () => _selectDate(context, false),
               ),
-              
+
               const SizedBox(height: 32),
-              
-              // Location
+
               _buildSectionTitle('Địa điểm'),
               const SizedBox(height: 16),
               _buildTextField(
@@ -668,24 +666,23 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                 hint: 'Nhập địa điểm...',
                 prefixIcon: Icons.location_on_outlined,
               ),
-              
+
               const SizedBox(height: 32),
-              
-              // Artists
+
               _buildSectionTitle('Nghệ sĩ'),
               const SizedBox(height: 16),
               filteredArtistsAsync.when(
                 data: (artists) => _buildArtistsSelector(
                   artists,
+                  allArtists: artistsAsync.value ?? artists,
                   isLocked: userProfile?.role == UserRole.editor,
                 ),
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (error, _) => Text('Lỗi: $error', style: const TextStyle(color: AppColors.error)),
               ),
-              
+
               const SizedBox(height: 32),
-              
-              // Event Type
+
               _buildSectionTitle('Loại sự kiện'),
               const SizedBox(height: 16),
               eventTypesAsync.when(
@@ -693,10 +690,9 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (error, _) => Text('Lỗi: $error', style: const TextStyle(color: AppColors.error)),
               ),
-              
+
               const SizedBox(height: 32),
-              
-              // Checklist
+
               _buildSectionTitle('Checklist'),
               const SizedBox(height: 8),
               Text(
@@ -708,24 +704,21 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
               ),
               const SizedBox(height: 16),
               _buildChecklistEditor(),
-              
+
               const SizedBox(height: 32),
-              
-              // Custom Fields
+
               _buildSectionTitle('Thông tin bổ sung'),
               const SizedBox(height: 16),
               _buildCustomFieldsEditor(),
-              
+
               const SizedBox(height: 32),
-              
-              // Links
+
               _buildSectionTitle('Links & Tài liệu'),
               const SizedBox(height: 16),
               _buildLinksEditor(),
-              
+
               const SizedBox(height: 32),
-              
-              // Notes
+
               _buildSectionTitle('Ghi chú'),
               const SizedBox(height: 16),
               _buildTextField(
@@ -734,10 +727,9 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                 hint: 'Thêm ghi chú...',
                 maxLines: 4,
               ),
-              
+
               const SizedBox(height: 32),
-              
-              // Reminders
+
               _buildSectionTitle('Thông báo'),
               const SizedBox(height: 8),
               Text(
@@ -749,10 +741,9 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
               ),
               const SizedBox(height: 16),
               _buildRemindersEditor(),
-              
+
               const SizedBox(height: 32),
-              
-              // Finance
+
               _buildSectionTitle('Tài chính'),
               const SizedBox(height: 8),
               Text(
@@ -764,7 +755,7 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
               ),
               const SizedBox(height: 16),
               _buildFinanceEditor(),
-              
+
               const SizedBox(height: 32),
             ],
           ),
@@ -772,6 +763,8 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
       ),
     );
   }
+
+  // ─── Shared UI helpers ───────────────────────────────────────────────────────
 
   Widget _buildSectionTitle(String title) {
     return Text(
@@ -852,7 +845,6 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
               setState(() {
                 _isAllDay = value;
                 if (value) {
-                  // Snap existing times to 00:00 / 23:59
                   _startTime = DateTime(
                       _startTime.year, _startTime.month, _startTime.day, 0, 0);
                   _endTime = DateTime(
@@ -924,7 +916,12 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
     );
   }
 
-  Widget _buildArtistsSelector(List<ArtistModel> artists, {bool isLocked = false}) {
+  Widget _buildArtistsSelector(
+      List<ArtistModel> artists, {
+        /// Full (unfiltered) artist list used for the share-percent auto-rule.
+        List<ArtistModel> allArtists = const [],
+        bool isLocked = false,
+      }) {
     if (artists.isEmpty) {
       return const Text(
         'Không có nghệ sĩ nào được gán',
@@ -935,7 +932,6 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Hint for editor
         if (isLocked) ...[
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -976,6 +972,22 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                     _selectedArtistIds.add(artist.id);
                   } else {
                     _selectedArtistIds.remove(artist.id);
+                  }
+
+                  // Tự động cập nhật tỉ lệ chia sẻ dựa trên danh sách nghệ sĩ đã chọn
+                  final selectedArtists = allArtists.where((a) => _selectedArtistIds.contains(a.id)).toList();
+                  bool hasDBA = selectedArtists.any((a) => a.name.trim().toUpperCase() == _dba.toUpperCase());
+                  bool hasTDT = selectedArtists.any((a) => a.name.trim().toUpperCase() == _tangDuyTanName.toUpperCase());
+
+                  if (hasDBA) {
+                    _artistSharePercent = _dbaSharePercent; // 0%
+                  } else if (hasTDT) {
+                    _artistSharePercent = _tangDuyTanSharePercent; // 80%
+                  } else if (_selectedArtistIds.isNotEmpty) {
+                    // Nếu không có nghệ sĩ đặc biệt, và tỉ lệ đang là 0% hoặc 80% (do tự động gán trước đó), đưa về 60%
+                    if (_artistSharePercent == _dbaSharePercent || _artistSharePercent == _tangDuyTanSharePercent) {
+                      _artistSharePercent = 60;
+                    }
                   }
                 });
               },
@@ -1030,7 +1042,6 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
           _selectedEventTypeId = value;
         });
         if (value != null && !_isEditMode) {
-          // Only auto-load checklist when creating new event
           _loadEventTypeChecklist(value);
         }
       },
@@ -1330,29 +1341,25 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
     required String creatorUid,
     required List<String> eventArtistIds,
   }) async {
-    // Set tự dedup uid
     final uids = <String>{creatorUid};
- 
+
     try {
       final userRepo = ref.read(userRepositoryProvider);
       final allActiveUsers = await userRepo.getAllActiveUsers();
- 
+
       for (final user in allActiveUsers) {
-        // Super Editor / Admin → nhận tất cả thông báo
         if (user.role.canManageSystem) {
           uids.add(user.id);
           continue;
         }
- 
-        // Editor → nhận nếu quản lý ít nhất 1 nghệ sĩ trong sự kiện
+
         if (user.role == UserRole.editor) {
           final isRelevant = user.managedArtistIds
               .any((id) => eventArtistIds.contains(id));
           if (isRelevant) uids.add(user.id);
           continue;
         }
- 
-        // Viewer → nhận nếu đại diện cho 1 nghệ sĩ trong sự kiện
+
         if (user.role == UserRole.viewer && user.artistId != null) {
           if (eventArtistIds.contains(user.artistId)) {
             uids.add(user.id);
@@ -1360,16 +1367,13 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
         }
       }
     } catch (e) {
-      // Nếu query thất bại, fallback về chỉ người tạo
-      // Không throw để không block toàn bộ flow save
       logger.w('⚠️ _getRecipientUserIds failed, fallback to creator: $e');
     }
- 
+
     return uids.toList();
   }
 
   Future<void> _saveReminders(String eventId) async {
-    // Edit mode + không còn reminder nào → xóa hết reminders cũ
     if (_reminderOptions.isEmpty) {
       if (_isEditMode) {
         try {
@@ -1379,19 +1383,19 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
       }
       return;
     }
- 
+
     try {
       final reminderRepo = ref.read(reminderRepositoryProvider);
       final currentUser = ref.read(authStateProvider).value;
       if (currentUser == null) return;
- 
+
       final recipientIds = await _getRecipientUserIds(
         creatorUid: currentUser.uid,
         eventArtistIds: _selectedArtistIds,
       );
- 
+
       logger.i('📬 recipientIds (${recipientIds.length}): $recipientIds');
- 
+
       final reminders = _reminderOptions.map((option) {
         final triggerTime = _startTime.subtract(
           option.unit.toDuration(option.value),
@@ -1407,18 +1411,13 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
           createdAt: DateTime.now(),
         );
       }).toList();
- 
-      // Lưu lên Firestore trong 1 batch duy nhất (atomic delete + create).
-      // Edit mode: xóa reminders cũ VÀ tạo reminders mới trong cùng 1 commit
-      // → stream trên các thiết bị khác chỉ bắn 1 lần với trạng thái cuối cùng
-      // → không có khoảng trống "0 reminders" gây race condition.
-      // Create mode: chỉ tạo mới (không có gì để xóa).
+
       if (_isEditMode) {
         await reminderRepo.replaceRemindersForEvent(eventId, reminders);
       } else {
         await reminderRepo.createReminders(reminders);
       }
- 
+
       logger.i('✅ Saved ${reminders.length} reminders → ${recipientIds.length} recipients');
     } catch (e) {
       if (mounted) {
@@ -1432,16 +1431,18 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
       }
     }
   }
-  
+
+  // ─── Finance editor ──────────────────────────────────────────────────────────
 
   Widget _buildFinanceEditor() {
+    final artistShareAmount = _revenue * (_artistSharePercent / 100);
     final totalExpenses = _expenses.fold<double>(0, (sum, item) => sum + item.amount);
-    final netIncome = _revenue - totalExpenses;
+    final netIncome = _revenue - totalExpenses - artistShareAmount;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Revenue input
+        // ── Revenue input ────────────────────────────────────────────────────
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -1509,8 +1510,141 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                 controller: TextEditingController(
                   text: _revenue > 0 ? NumberFormatter.format(_revenue) : '',
                 )..selection = TextSelection.collapsed(
-                    offset: _revenue > 0 ? NumberFormatter.format(_revenue).length : 0,
-                  ),
+                  offset: _revenue > 0 ? NumberFormatter.format(_revenue).length : 0,
+                ),
+              ),
+              // Artist share selector & preview
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.warning.withValues(alpha: 0.2)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Flexible(
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.percent,
+                                size: 16,
+                                color: AppColors.warning.withValues(alpha: 0.8),
+                              ),
+                              const SizedBox(width: 8),
+                              const Flexible(
+                                child: Text(
+                                  'Tỉ lệ nghệ sĩ nhận',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Nút tăng/giảm để chỉnh đơn vị 5%
+                        Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.warning.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.remove, size: 14),
+                                color: AppColors.warning,
+                                onPressed: _artistSharePercent > 0
+                                    ? () => setState(() {
+                                          _artistSharePercent = (_artistSharePercent - 5).clamp(0, 100);
+                                        })
+                                    : null,
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.all(4),
+                              ),
+                              SizedBox(
+                                width: 36,
+                                child: Text(
+                                  '$_artistSharePercent%',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: AppColors.warning,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.add, size: 14),
+                                color: AppColors.warning,
+                                onPressed: _artistSharePercent < 80
+                                    ? () => setState(() {
+                                          _artistSharePercent = (_artistSharePercent + 5).clamp(0, 100);
+                                        })
+                                    : null,
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.all(4),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    // Các nút chọn nhanh
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 8,
+                      alignment: WrapAlignment.center,
+                      children: [30, 50, 60, 80].map((p) {
+                        final isSelected = _artistSharePercent == p;
+                        return InkWell(
+                          onTap: () => setState(() => _artistSharePercent = p),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: isSelected ? AppColors.warning : AppColors.surfaceDark,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isSelected ? AppColors.warning : AppColors.borderDark,
+                              ),
+                            ),
+                            child: Text(
+                              '$p%',
+                              style: TextStyle(
+                                color: isSelected ? Colors.black : Colors.white,
+                                fontSize: 12,
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    if (_revenue > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Text(
+                          'Thành tiền: ${artistShareAmount.toVND()}',
+                          style: TextStyle(
+                            color: AppColors.warning.withValues(alpha: 0.9),
+                            fontSize: 13,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -1518,7 +1652,7 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
 
         const SizedBox(height: 16),
 
-        // Expenses list
+        // ── Expenses list ────────────────────────────────────────────────────
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -1641,20 +1775,20 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
 
         const SizedBox(height: 16),
 
-        // Net income summary
+        // ── Net income summary ───────────────────────────────────────────────
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: netIncome >= 0
                   ? [
-                      AppColors.success.withValues(alpha: 0.2),
-                      AppColors.success.withValues(alpha: 0.1),
-                    ]
+                AppColors.success.withValues(alpha: 0.2),
+                AppColors.success.withValues(alpha: 0.1),
+              ]
                   : [
-                      AppColors.error.withValues(alpha: 0.2),
-                      AppColors.error.withValues(alpha: 0.1),
-                    ],
+                AppColors.error.withValues(alpha: 0.2),
+                AppColors.error.withValues(alpha: 0.1),
+              ],
             ),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
@@ -1789,7 +1923,7 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
       builder: (context) {
         final nameController = TextEditingController();
         final amountController = TextEditingController();
-        
+
         return AlertDialog(
           backgroundColor: AppColors.surfaceDark,
           title: const Text(

@@ -20,10 +20,12 @@ import '../../core/utils/number_formatter.dart';
 /// Event Details Screen - Shows full event information with role-based permissions
 class EventDetailsScreen extends ConsumerStatefulWidget {
   final EventModel event;
+  final DateTime? selectedDate;
 
   const EventDetailsScreen({
     super.key,
     required this.event,
+    this.selectedDate,
   });
 
   @override
@@ -146,10 +148,10 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
       try {
         final eventRepo = ref.read(eventRepositoryProvider);
         await eventRepo.deleteEvent(_currentEvent.id);
-        
+
         // Force refresh events list
         ref.invalidate(eventsStreamProvider);
-        
+
         if (mounted) {
           Navigator.pop(context);
           ScaffoldMessenger.of(context).showSnackBar(
@@ -229,46 +231,46 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
           children: [
             // Header Section
             _buildHeaderSection(artistsAsync.value ?? []),
-            
+
             const Divider(color: AppColors.borderDark, height: 1),
-            
+
             // Details Section
             _buildDetailsSection(),
-            
+
             // Checklist Section
             if (_currentEvent.checklistItems.isNotEmpty) ...[
               const Divider(color: AppColors.borderDark, height: 1),
               _buildChecklistSection(canEdit.value ?? false),
             ],
-            
+
             // Custom Fields Section
             if (_currentEvent.customFields.isNotEmpty) ...[
               const Divider(color: AppColors.borderDark, height: 1),
               _buildCustomFieldsSection(),
             ],
-            
+
             // Links Section
             if (!isViewer && _currentEvent.links.isNotEmpty) ...[
               const Divider(color: AppColors.borderDark, height: 1),
               _buildLinksSection(),
             ],
-            
+
             // Notes Section
             if (_currentEvent.notes != null && _currentEvent.notes!.isNotEmpty) ...[
               const Divider(color: AppColors.borderDark, height: 1),
               _buildNotesSection(),
             ],
-            
+
             // Reminders Section
             const Divider(color: AppColors.borderDark, height: 1),
             _buildRemindersSection(canEdit.value ?? false),
-            
+
             // Finance Section
             if (_currentEvent.finance != null) ...[
               const Divider(color: AppColors.borderDark, height: 1),
               _buildFinanceSection(isViewer: isViewer),
             ],
-            
+
             const SizedBox(height: 24),
           ],
         ),
@@ -293,7 +295,7 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // Time
           Row(
             children: [
@@ -314,18 +316,26 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Text(
+                      _formatEventDate(_currentEvent),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
-                        Text(
-                          DateFormat('EEEE, MMMM d, y').format(_currentEvent.startTime),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                        if (!_currentEvent.isAllDay)
+                          Text(
+                            '${DateFormat('HH:mm').format(_currentEvent.startTime)} - ${DateFormat('HH:mm').format(_currentEvent.endTime)}',
+                            style: const TextStyle(
+                              color: AppColors.textDarkSecondary,
+                              fontSize: 14,
+                            ),
                           ),
-                        ),
-                        if (_currentEvent.isAllDay) ...[
-                          const SizedBox(width: 8),
+                        if (_currentEvent.isAllDay)
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 2),
@@ -334,7 +344,7 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
                               borderRadius: BorderRadius.circular(6),
                               border: Border.all(
                                   color:
-                                      AppColors.primary.withValues(alpha: 0.5)),
+                                  AppColors.primary.withValues(alpha: 0.5)),
                             ),
                             child: const Text(
                               'Cả ngày',
@@ -345,24 +355,14 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
                               ),
                             ),
                           ),
-                        ],
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    if (!_currentEvent.isAllDay)
-                      Text(
-                        '${DateFormat('HH:mm').format(_currentEvent.startTime)} - ${DateFormat('HH:mm').format(_currentEvent.endTime)}',
-                        style: const TextStyle(
-                          color: AppColors.textDarkSecondary,
-                          fontSize: 14,
-                        ),
-                      ),
                   ],
                 ),
               ),
             ],
           ),
-          
+
           // Location
           if (_currentEvent.location != null) ...[
             const SizedBox(height: 16),
@@ -393,7 +393,7 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
               ],
             ),
           ],
-          
+
           // Artists
           if (artists.isNotEmpty) ...[
             const SizedBox(height: 16),
@@ -549,12 +549,12 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
                 ),
                 subtitle: item.completedAt != null
                     ? Text(
-                        'Completed ${DateFormat('MMM d, HH:mm').format(item.completedAt!)}',
-                        style: const TextStyle(
-                          color: AppColors.textDarkSecondary,
-                          fontSize: 12,
-                        ),
-                      )
+                  'Completed ${DateFormat('MMM d, HH:mm').format(item.completedAt!)}',
+                  style: const TextStyle(
+                    color: AppColors.textDarkSecondary,
+                    fontSize: 12,
+                  ),
+                )
                     : null,
                 activeColor: AppColors.success,
                 checkColor: Colors.white,
@@ -919,7 +919,7 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
       onRemindersChanged: (options) async {
         try {
           final reminderRepo = ref.read(reminderRepositoryProvider);
-          
+
           // Delete all existing reminders
           await reminderRepo.deleteRemindersByEventId(_currentEvent.id);
 
@@ -995,6 +995,29 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
         );
       }
     }
+  }
+
+  String _formatEventDate(EventModel event) {
+    // If a specific date was selected from the calendar, show that date
+    if (widget.selectedDate != null) {
+      return DateFormat.yMMMMd().format(widget.selectedDate!);
+    }
+
+    final start = event.startTime;
+    final end = event.endTime;
+
+    // Check if it's the same day
+    if (start.year == end.year && start.month == end.month && start.day == end.day) {
+      return DateFormat.yMMMMd().format(start);
+    }
+
+    // Different days, same year
+    if (start.year == end.year) {
+      return '${DateFormat.MMMMd().format(start)} - ${DateFormat.yMMMMd().format(end)}';
+    }
+
+    // Different years
+    return '${DateFormat.yMMMMd().format(start)} - ${DateFormat.yMMMMd().format(end)}';
   }
 
   Widget _buildFinanceSection({required bool isViewer}) {
@@ -1272,13 +1295,13 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
               gradient: LinearGradient(
                 colors: netIncome >= 0
                     ? [
-                        AppColors.success.withValues(alpha: 0.2),
-                        AppColors.success.withValues(alpha: 0.1),
-                      ]
+                  AppColors.success.withValues(alpha: 0.2),
+                  AppColors.success.withValues(alpha: 0.1),
+                ]
                     : [
-                        AppColors.error.withValues(alpha: 0.2),
-                        AppColors.error.withValues(alpha: 0.1),
-                      ],
+                  AppColors.error.withValues(alpha: 0.2),
+                  AppColors.error.withValues(alpha: 0.1),
+                ],
               ),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
@@ -1327,24 +1350,24 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
 // Provider to check if current user can edit this event
 final canEditEventProvider = Provider.family<AsyncValue<bool>, EventModel>((ref, event) {
   final userProfileAsync = ref.watch(currentUserProfileProvider);
-  
+
   return userProfileAsync.when(
     data: (user) {
       if (user == null) return const AsyncValue.data(false);
-      
+
       // Super Editor can edit everything
       if (user.role == UserRole.superEditor) {
         return const AsyncValue.data(true);
       }
-      
+
       // Editor can edit if event has any of their managed artists
       if (user.role == UserRole.editor) {
         final hasPermission = user.managedArtistIds.any(
-          (artistId) => event.artistIds.contains(artistId),
+              (artistId) => event.artistIds.contains(artistId),
         );
         return AsyncValue.data(hasPermission);
       }
-      
+
       // Viewer cannot edit
       return const AsyncValue.data(false);
     },

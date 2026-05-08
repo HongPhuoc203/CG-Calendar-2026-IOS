@@ -9,6 +9,7 @@ import '../calendar/calendar_screen.dart';
 import '../revenue/revenue_screen.dart';
 import '../profile/profile_screen.dart';
 import '../ai_chat/ai_chat_screen.dart';
+import '../revenue/dba_revenue_screen.dart';
 
 /// Main screen with bottom navigation
 class MainScreen extends ConsumerStatefulWidget {
@@ -29,12 +30,35 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     ProfileScreen(),
   ];
 
-  static const List<Widget> _screensEditor = [
+  static const List<Widget> _screensEditorNoRevenue = [
     HomeScreen(),
     CalendarScreen(),
     AiChatScreen(),
     ProfileScreen(),
   ];
+
+  static const List<Widget> _screensEditorWithRevenue = [
+    HomeScreen(),
+    CalendarScreen(),
+    RevenueScreen(),
+    AiChatScreen(),
+    ProfileScreen(),
+  ];
+
+  static const List<Widget> _screensSuperEditor = [
+    HomeScreen(),
+    CalendarScreen(),
+    RevenueScreen(),
+    DBARevenueScreen(),
+    AiChatScreen(),
+    ProfileScreen(),
+  ];
+
+  static const BottomNavigationBarItem _dbaNavItem = BottomNavigationBarItem(
+    icon: Icon(Icons.analytics_outlined),
+    activeIcon: Icon(Icons.analytics),
+    label: 'DBA',
+  );
 
   static final BottomNavigationBarItem _aiNavItem = BottomNavigationBarItem(
     icon: ShaderMask(
@@ -54,37 +78,55 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Clamp selected index khi screens list thay đổi do role/permission
     ref.listen<AsyncValue<UserModel?>>(currentUserProfileProvider,
         (previous, next) {
-      final nowEditor = next.maybeWhen(
-        data: (u) => u?.role == UserRole.editor,
-        orElse: () => false,
-      );
-      if (!nowEditor) return;
-
-      final previousWasEditor = previous?.maybeWhen(
-            data: (u) => u?.role == UserRole.editor,
+      final prevHasRevenue = previous?.maybeWhen(
+            data: (u) {
+              if (u == null) return false;
+              if (u.role == UserRole.superEditor) return true;
+              if (u.role == UserRole.editor) return u.canViewRevenue;
+              return u.role != UserRole.editor;
+            },
             orElse: () => false,
           ) ??
           false;
-      if (previousWasEditor) return;
 
-      setState(() {
-        if (_selectedIndex == 2) {
-          _selectedIndex = 0;
-        } else if (_selectedIndex > 2) {
-          _selectedIndex -= 1;
-        }
-      });
+      final nowHasRevenue = next.maybeWhen(
+        data: (u) {
+          if (u == null) return false;
+          if (u.role == UserRole.superEditor) return true;
+          if (u.role == UserRole.editor) return u.canViewRevenue;
+          return u.role != UserRole.editor;
+        },
+        orElse: () => false,
+      );
+
+      // Tab doanh thu (index 2) bị mất → reset về trang chủ nếu đang ở đó
+      if (prevHasRevenue && !nowHasRevenue && _selectedIndex >= 2) {
+        setState(() => _selectedIndex = 0);
+      }
     });
 
     final currentUser = ref.watch(currentUserProfileProvider);
-    final isEditor = currentUser.maybeWhen(
-      data: (u) => u?.role == UserRole.editor,
-      orElse: () => false,
-    );
+    final user = currentUser.asData?.value;
+    final role = user?.role ?? UserRole.viewer;
 
-    final screens = isEditor ? _screensEditor : _screensWithRevenue;
+    final isEditor = role == UserRole.editor;
+    final isSuperEditor = role == UserRole.superEditor;
+    final editorCanViewRevenue = isEditor && (user?.canViewRevenue ?? false);
+
+    List<Widget> screens;
+    if (isSuperEditor) {
+      screens = _screensSuperEditor;
+    } else if (isEditor) {
+      screens = editorCanViewRevenue
+          ? _screensEditorWithRevenue
+          : _screensEditorNoRevenue;
+    } else {
+      screens = _screensWithRevenue;
+    }
+
     final safeIndex = _selectedIndex.clamp(0, screens.length - 1);
     if (safeIndex != _selectedIndex) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -92,48 +134,31 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       });
     }
 
-    final items = isEditor
-        ? [
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home),
-              label: 'Trang chủ',
-            ),
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.calendar_today_outlined),
-              activeIcon: Icon(Icons.calendar_today),
-              label: 'Lịch',
-            ),
-            _aiNavItem,
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              activeIcon: Icon(Icons.person),
-              label: 'Cá nhân',
-            ),
-          ]
-        : [
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home),
-              label: 'Trang chủ',
-            ),
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.calendar_today_outlined),
-              activeIcon: Icon(Icons.calendar_today),
-              label: 'Lịch',
-            ),
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.bar_chart_outlined),
-              activeIcon: Icon(Icons.bar_chart),
-              label: 'Doanh thu',
-            ),
-            _aiNavItem,
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              activeIcon: Icon(Icons.person),
-              label: 'Cá nhân',
-            ),
-          ];
+    final items = [
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.home_outlined),
+        activeIcon: Icon(Icons.home),
+        label: 'Trang chủ',
+      ),
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.calendar_today_outlined),
+        activeIcon: Icon(Icons.calendar_today),
+        label: 'Lịch',
+      ),
+      if (!isEditor || editorCanViewRevenue)
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.bar_chart_outlined),
+          activeIcon: Icon(Icons.bar_chart),
+          label: 'Doanh thu',
+        ),
+      if (isSuperEditor) _dbaNavItem,
+      _aiNavItem,
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.person_outline),
+        activeIcon: Icon(Icons.person),
+        label: 'Cá nhân',
+      ),
+    ];
 
     return Scaffold(
       body: IndexedStack(

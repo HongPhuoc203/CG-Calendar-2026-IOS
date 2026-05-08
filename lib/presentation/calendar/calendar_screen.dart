@@ -331,6 +331,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   }
 
   Widget _buildCalendar(List<EventModel> events) {
+    // Compute stable slot and colour assignments once for the whole event list
+    // so every event keeps the same bar row and colour across all week rows.
+    final slotMap = _computeSlotAssignments(events);
+    final colorMap = _computeColorAssignments(events);
+
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surfaceDark.withValues(alpha: 0.3),
@@ -359,13 +364,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         // draw Google-Calendar-style multi-day bars inside each cell.
         calendarBuilders: CalendarBuilders(
           defaultBuilder: (context, day, _) =>
-              _buildDayCell(context, day, events),
+              _buildDayCell(context, day, events, slotMap, colorMap),
           todayBuilder: (context, day, _) =>
-              _buildDayCell(context, day, events, isToday: true),
+              _buildDayCell(context, day, events, slotMap, colorMap, isToday: true),
           selectedBuilder: (context, day, _) =>
-              _buildDayCell(context, day, events, isSelected: true),
+              _buildDayCell(context, day, events, slotMap, colorMap, isSelected: true),
           outsideBuilder: (context, day, _) =>
-              _buildDayCell(context, day, events, isOutside: true),
+              _buildDayCell(context, day, events, slotMap, colorMap, isOutside: true),
         ),
         calendarStyle: CalendarStyle(
           // Bars are rendered inside calendarBuilders — disable default dots.
@@ -477,7 +482,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => EventDetailsScreen(event: event),
+            builder: (context) => EventDetailsScreen(
+              event: event,
+              selectedDate: _selectedDay,
+            ),
           ),
         );
       },
@@ -620,7 +628,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   // ─── Calendar layout constants ──────────────────────────────────────────────
 
   /// Height of each week row in the month grid.
-  static const double _kRowH = 70.0;
+  static const double _kRowH = 65.0;
 
   /// Height reserved for the day-number circle inside each cell.
   static const double _kDayNumH = 36.0;
@@ -632,14 +640,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   static const double _kBarGap = 2.0;
 
   /// Maximum bars rendered per cell; any additional events become "+N".
-  static const int _kMaxBars = 3;
+  static const int _kMaxBars = 2;
 
   // ─── Multi-day bar helpers ───────────────────────────────────────────────────
-
-  /// Deterministic bar colour derived from the event ID so the same event
-  /// always gets the same colour on every day it spans.
-  Color _barColor(EventModel event) => AppColors.artistColors[
-      event.id.hashCode.abs() % AppColors.artistColors.length];
 
   /// True when [day] is the visual LEFT edge of [event]'s bar:
   /// either the actual event start date, or Monday (first day of a week row),
@@ -675,28 +678,34 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   Widget _buildDayCell(
     BuildContext context,
     DateTime day,
-    List<EventModel> allEvents, {
+    List<EventModel> allEvents,
+    Map<String, int> slotMap,
+    Map<String, Color> colorMap, {
     bool isToday = false,
     bool isSelected = false,
     bool isOutside = false,
   }) {
-    // Sort multi-day events stably so the same event occupies the same slot
-    // across all the days it spans (primary: start date, secondary: id).
     final multiDay = allEvents
         .where((e) => _isMultiDay(e) && _dayInRange(e, day))
-        .toList()
-      ..sort((a, b) {
-        final c = a.startTime.compareTo(b.startTime);
-        return c != 0 ? c : a.id.compareTo(b.id);
-      });
+        .toList();
 
     final singleDay = allEvents
         .where((e) => !_isMultiDay(e) && isSameDay(e.startTime, day))
         .toList();
 
-    final visibleBars = multiDay.take(_kMaxBars).toList();
-    final overflow = multiDay.length - _kMaxBars;
+    // Build a slot-index → event map for this day using the global assignment.
+    // Events assigned to a slot >= _kMaxBars are hidden (no overflow label
+    // needed — the day list below shows them all on tap).
+    final eventsBySlot = <int, EventModel>{};
+    for (final event in multiDay) {
+      final slot = slotMap[event.id] ?? _kMaxBars;
+      if (slot < _kMaxBars) {
+        eventsBySlot[slot] = event;
+      }
+    }
 
+    // Layout math (must fit inside _kRowH = 65 px):
+    //   _kDayNumH (36) + slot0 (13) + gap (2) + slot1 (13) = 64 ✓
     return SizedBox(
       height: _kRowH,
       child: Column(
@@ -734,25 +743,20 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             ),
           ),
 
-          // ── Multi-day event bars ──────────────────────────────────────────
-          for (final event in visibleBars) ...[
-            _buildBarSlice(event, day),
-            SizedBox(height: _kBarGap),
-          ],
-
-          // ── "+N more" overflow label ──────────────────────────────────────
-          if (overflow > 0)
-            Padding(
-              padding: const EdgeInsets.only(left: 5),
-              child: Text(
-                '+$overflow',
-                style: TextStyle(
-                  color: AppColors.textDarkSecondary.withValues(alpha: 0.85),
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
+          // ── Fixed slot rows — only when this day has multi-day events.
+          //    Placeholder SizedBoxes ensure events at the same slot index
+          //    stay on the same vertical line across every cell in the row.
+          //    Layout: slot0(13) + gap(2) + slot1(13) = 28 → total 64 ✓
+          if (multiDay.isNotEmpty)
+            for (int slot = 0; slot < _kMaxBars; slot++) ...[
+              if (slot > 0) SizedBox(height: _kBarGap),
+            if (eventsBySlot.containsKey(slot))
+              _buildBarSlice(eventsBySlot[slot]!, day,
+                  colorMap[eventsBySlot[slot]!.id] ??
+                      AppColors.artistColors[slot % AppColors.artistColors.length])
+            else
+                SizedBox(height: _kBarH), // empty placeholder keeps alignment
+            ],
 
           // ── Single-day dots (only when there are no multi-day bars) ───────
           if (singleDay.isNotEmpty && multiDay.isEmpty)
@@ -786,10 +790,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   ///   • **End day** — tiny right margin (1.5 px) + rounded right cap.
   ///   • At week boundaries [_isBarStart] / [_isBarEnd] return true on
   ///     Mon / Sun, so the bar caps itself and restarts on the next row.
-  Widget _buildBarSlice(EventModel event, DateTime day) {
+  Widget _buildBarSlice(EventModel event, DateTime day, Color color) {
     final start = _isBarStart(event, day);
     final end = _isBarEnd(event, day);
-    final color = _barColor(event);
 
     return Container(
       height: _kBarH,
@@ -833,6 +836,79 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     final end = DateTime(
         event.endTime.year, event.endTime.month, event.endTime.day);
     return end.isAfter(start);
+  }
+
+  /// Returns true if the date ranges of [a] and [b] overlap (inclusive).
+  bool _datesOverlap(EventModel a, EventModel b) {
+    final aS = DateTime(
+        a.startTime.year, a.startTime.month, a.startTime.day);
+    final aE = DateTime(a.endTime.year, a.endTime.month, a.endTime.day);
+    final bS = DateTime(
+        b.startTime.year, b.startTime.month, b.startTime.day);
+    final bE = DateTime(b.endTime.year, b.endTime.month, b.endTime.day);
+    return !aE.isBefore(bS) && !bE.isBefore(aS);
+  }
+
+  /// Assigns a stable vertical slot index to every multi-day event so that
+  /// the same event occupies the same bar row across all week rows it spans.
+  ///
+  /// Algorithm: sort events by start date, then greedily assign each to the
+  /// lowest slot that has no date-range conflict with events already there.
+  Map<String, int> _computeSlotAssignments(List<EventModel> allEvents) {
+    final multiDay = allEvents.where(_isMultiDay).toList()
+      ..sort((a, b) {
+        final c = a.startTime.compareTo(b.startTime);
+        return c != 0 ? c : a.id.compareTo(b.id);
+      });
+
+    final assignments = <String, int>{};
+    final slots = <List<EventModel>>[];
+
+    for (final event in multiDay) {
+      int slotIdx = 0;
+      while (true) {
+        if (slotIdx >= slots.length) slots.add([]);
+        final hasConflict =
+            slots[slotIdx].any((other) => _datesOverlap(event, other));
+        if (!hasConflict) {
+          slots[slotIdx].add(event);
+          assignments[event.id] = slotIdx;
+          break;
+        }
+        slotIdx++;
+      }
+    }
+    return assignments;
+  }
+
+  /// Assigns colours to multi-day events using a greedy graph-colouring
+  /// algorithm: any two events whose date ranges overlap are guaranteed to
+  /// receive different colours.
+  Map<String, Color> _computeColorAssignments(List<EventModel> allEvents) {
+    final palette = AppColors.artistColors;
+    final multiDay = allEvents.where(_isMultiDay).toList()
+      ..sort((a, b) {
+        final c = a.startTime.compareTo(b.startTime);
+        return c != 0 ? c : a.id.compareTo(b.id);
+      });
+
+    final assignments = <String, Color>{};
+
+    for (final event in multiDay) {
+      final usedColors = multiDay
+          .where((other) =>
+              other.id != event.id &&
+              assignments.containsKey(other.id) &&
+              _datesOverlap(event, other))
+          .map((other) => assignments[other.id]!)
+          .toSet();
+
+      assignments[event.id] = palette.firstWhere(
+        (c) => !usedColors.contains(c),
+        orElse: () => palette[event.id.hashCode.abs() % palette.length],
+      );
+    }
+    return assignments;
   }
 
   int _eventDayCount(EventModel event) {

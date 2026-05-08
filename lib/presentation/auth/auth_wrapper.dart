@@ -6,10 +6,11 @@ import '../../providers/services_providers.dart';
 import '../../data/models/user_model.dart';
 import '../../providers/repositories_providers.dart';
 import '../auth/login_screen.dart';
-import '../auth/pending_approval_screen.dart';
 import '../main/main_screen.dart';
 import '../splash/splash_screen.dart';
 import '../../core/utils/logger.dart';
+import '../guest_calendar_screen/guest_screen.dart';
+
 
 /// Provider to initialize FCM and Local Notifications when user is authenticated.
 ///
@@ -188,14 +189,14 @@ class AuthWrapper extends ConsumerWidget {
 
             // Route based on role
             switch (profile.role.toFirestore()) {
-              case 'pending':
-                return const PendingApprovalScreen();
+              case 'guest':
+                return const GuestCalendarScreen();
               case 'viewer':
               case 'editor':
               case 'super_editor':
                 return const MainScreen();
               default:
-                return const PendingApprovalScreen();
+                return const GuestCalendarScreen();
             }
           },
           loading: () => const _LoadingScreen(),
