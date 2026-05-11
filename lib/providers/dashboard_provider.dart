@@ -47,11 +47,15 @@ final dashboardStatsProvider = FutureProvider.autoDispose<DashboardStatsModel>((
       days: 7,
     );
 
-    // Get urgent tasks
-    final urgentEvents = await eventRepository.getUrgentEvents(
+    // Get urgent tasks (same logic as urgentEventsProvider — 7 days, no checklist = urgent)
+    final allUpcoming = await eventRepository.getUpcomingEvents(
       artistIds: artistIds,
-      hoursThreshold: 48,
+      days: 7,
     );
+    final urgentEvents = allUpcoming.where((e) {
+      if (e.checklistItems.isEmpty) return true;
+      return e.checklistItems.any((item) => !item.isCompleted);
+    }).toList();
 
     // Get revenue stats for current month
     final revenueStats = await revenueRepository.getCurrentMonthRevenue(
@@ -77,34 +81,50 @@ final dashboardStatsProvider = FutureProvider.autoDispose<DashboardStatsModel>((
   }
 });
 
-/// Provider for urgent events
-final urgentEventsProvider = FutureProvider.autoDispose<List<EventModel>>((ref) async {
-  final eventRepository = ref.watch(eventRepositoryProvider);
+/// Provider for urgent events — dùng eventsStreamProvider để cập nhật realtime.
+///
+/// Hiển thị các sự kiện trong 7 ngày tới mà:
+///   - Có checklist item chưa hoàn thành, HOẶC
+///   - Chưa có checklist nào được thiết lập (cần chuẩn bị)
+final urgentEventsProvider =
+    Provider.autoDispose<AsyncValue<List<EventModel>>>((ref) {
+  final eventsAsync = ref.watch(eventsStreamProvider);
   final userProfileAsync = ref.watch(currentUserProfileProvider);
 
-  final user = userProfileAsync.asData?.value;
-  if (user == null) return [];
-
-  List<String> artistIds = [];
-  switch (user.role) {
-    case UserRole.guest:
-      return [];
-    case UserRole.viewer:
-      if (user.artistId != null) {
-        artistIds = [user.artistId!];
+  return eventsAsync.when(
+    loading: () => const AsyncValue.loading(),
+    error: (e, s) => AsyncValue.error(e, s),
+    data: (events) {
+      final user = userProfileAsync.asData?.value;
+      if (user == null || user.role == UserRole.guest) {
+        return const AsyncValue.data([]);
       }
-      break;
-    case UserRole.editor:
-      artistIds = user.managedArtistIds;
-      break;
-    case UserRole.superEditor:
-      artistIds = [];
-      break;
-  }
 
-  return eventRepository.getUrgentEvents(
-    artistIds: artistIds,
-    hoursThreshold: 48,
+      final now = DateTime.now();
+      final deadline = now.add(const Duration(days: 7));
+
+      final urgent = events.where((e) {
+        // Lọc theo khoảng thời gian (7 ngày tới)
+        if (e.startTime.isBefore(now) || e.startTime.isAfter(deadline)) {
+          return false;
+        }
+        // Lọc theo role / nghệ sĩ quản lý
+        if (user.role == UserRole.viewer) {
+          if (user.artistId == null) return false;
+          if (!e.artistIds.contains(user.artistId)) return false;
+        } else if (user.role == UserRole.editor) {
+          if (!e.artistIds.any((id) => user.managedArtistIds.contains(id))) {
+            return false;
+          }
+        }
+        // Urgent nếu: chưa có checklist HOẶC có item chưa xong
+        if (e.checklistItems.isEmpty) return true;
+        return e.checklistItems.any((item) => !item.isCompleted);
+      }).toList()
+        ..sort((a, b) => a.startTime.compareTo(b.startTime));
+
+      return AsyncValue.data(urgent);
+    },
   );
 });
 

@@ -71,6 +71,12 @@ class HomeScreen extends ConsumerWidget {
                   data: (stats) => _buildStatsCards(
                     context,
                     stats,
+                    // Dùng revenue đã lọc DBA từ homeRevenueStatsProvider
+                    filteredRevenue: revenueStats.when(
+                      data: (r) => r,
+                      loading: () => null,
+                      error: (_, __) => null,
+                    ),
                     isViewer: isViewer,
                     isEditor: isEditor,
                     hasRevenueAccess: hasRevenueAccess,
@@ -95,6 +101,7 @@ class HomeScreen extends ConsumerWidget {
                   data: (events) => _buildUrgentTasks(context, ref, events),
                   loading: () => _buildSectionLoading(),
                   error: (error, stack) => const SizedBox.shrink(),
+                  skipError: true,
                 ),
               ),
 
@@ -160,13 +167,20 @@ class HomeScreen extends ConsumerWidget {
   Widget _buildStatsCards(
     BuildContext context,
     DashboardStatsModel stats, {
+    RevenueStatsModel? filteredRevenue,
     bool isViewer = false,
     bool isEditor = false,
     bool hasRevenueAccess = false,
   }) {
-    final artistShare = stats.totalRevenue * 0.6;
-    final totalExpenses = stats.totalExpenses + artistShare;
-    final netIncome = stats.totalRevenue - totalExpenses;
+    // Ưu tiên dùng revenue đã lọc DBA từ homeRevenueStatsProvider;
+    // fallback về raw dashboard stats nếu chưa load.
+    final totalRevenue =
+        filteredRevenue?.totalRevenue ?? stats.totalRevenue;
+    final rawExpenses =
+        filteredRevenue?.totalExpenses ?? stats.totalExpenses;
+    final artistShare = totalRevenue * 0.6;
+    final totalExpenses = rawExpenses + artistShare;
+    final netIncome = totalRevenue - totalExpenses;
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -219,7 +233,7 @@ class HomeScreen extends ConsumerWidget {
                   child: StatCard(
                     icon: Icons.trending_up,
                     title: 'Doanh thu',
-                    value: NumberFormatter.formatCompact(stats.totalRevenue),
+                    value: NumberFormatter.formatCompact(totalRevenue),
                     iconColor: AppColors.success,
                     onTap: () {
                       Navigator.push(
@@ -349,7 +363,14 @@ class HomeScreen extends ConsumerWidget {
           title: 'Việc cần làm gấp',
           icon: Icons.warning_amber_rounded,
           actionText: 'Xem tất cả',
-          onActionTap: () {},
+          onActionTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const CalendarScreen(),
+              ),
+            );
+          },
         ),
         const SizedBox(height: 8),
         Padding(
