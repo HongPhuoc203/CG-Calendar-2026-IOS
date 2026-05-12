@@ -71,12 +71,6 @@ class HomeScreen extends ConsumerWidget {
                   data: (stats) => _buildStatsCards(
                     context,
                     stats,
-                    // Dùng revenue đã lọc DBA từ homeRevenueStatsProvider
-                    filteredRevenue: revenueStats.when(
-                      data: (r) => r,
-                      loading: () => null,
-                      error: (_, __) => null,
-                    ),
                     isViewer: isViewer,
                     isEditor: isEditor,
                     hasRevenueAccess: hasRevenueAccess,
@@ -167,20 +161,13 @@ class HomeScreen extends ConsumerWidget {
   Widget _buildStatsCards(
     BuildContext context,
     DashboardStatsModel stats, {
-    RevenueStatsModel? filteredRevenue,
     bool isViewer = false,
     bool isEditor = false,
     bool hasRevenueAccess = false,
   }) {
-    // Ưu tiên dùng revenue đã lọc DBA từ homeRevenueStatsProvider;
-    // fallback về raw dashboard stats nếu chưa load.
-    final totalRevenue =
-        filteredRevenue?.totalRevenue ?? stats.totalRevenue;
-    final rawExpenses =
-        filteredRevenue?.totalExpenses ?? stats.totalExpenses;
-    final artistShare = totalRevenue * 0.6;
-    final totalExpenses = rawExpenses + artistShare;
-    final netIncome = totalRevenue - totalExpenses;
+    final artistShare = stats.totalRevenue * 0.6;
+    final totalExpenses = stats.totalExpenses + artistShare;
+    final netIncome = stats.totalRevenue - totalExpenses;
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -233,7 +220,7 @@ class HomeScreen extends ConsumerWidget {
                   child: StatCard(
                     icon: Icons.trending_up,
                     title: 'Doanh thu',
-                    value: NumberFormatter.formatCompact(totalRevenue),
+                    value: NumberFormatter.formatCompact(stats.totalRevenue),
                     iconColor: AppColors.success,
                     onTap: () {
                       Navigator.push(

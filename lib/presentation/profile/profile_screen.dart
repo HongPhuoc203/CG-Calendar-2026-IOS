@@ -13,7 +13,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-
+import '../helper/help_screen.dart';
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
@@ -165,7 +165,10 @@ class ProfileScreen extends ConsumerWidget {
           _buildMenuItem(
             icon: Icons.help_outline,
             title: 'Trợ giúp',
-            onTap: () {},
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const HelpScreen()),
+            ),
           ),
           _buildMenuItem(
             icon: Icons.info_outline,

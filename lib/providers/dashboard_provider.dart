@@ -9,76 +9,85 @@ import 'events_provider.dart';
 import 'artists_provider.dart';
 
 
-/// Provider for Dashboard Statistics
-final dashboardStatsProvider = FutureProvider.autoDispose<DashboardStatsModel>((ref) async {
-  final eventRepository = ref.watch(eventRepositoryProvider);
-  final revenueRepository = ref.watch(revenueRepositoryProvider);
+/// Provider for Dashboard Statistics.
+///
+/// Tính toán in-memory từ [eventsStreamProvider] để tránh lỗi thiếu
+/// Firestore composite index khi kết hợp range filter + arrayContainsAny.
+final dashboardStatsProvider =
+    Provider.autoDispose<AsyncValue<DashboardStatsModel>>((ref) {
+  final eventsAsync = ref.watch(eventsStreamProvider);
+  final artistsAsync = ref.watch(artistsStreamProvider);
   final userProfileAsync = ref.watch(currentUserProfileProvider);
   final unreadCount = ref.watch(unreadNotificationsCountProvider);
 
-  final user = userProfileAsync.asData?.value;
-  if (user == null) {
-    return const DashboardStatsModel();
-  }
+  return eventsAsync.when(
+    loading: () => const AsyncValue.loading(),
+    error: (e, s) => AsyncValue.error(e, s),
+    data: (events) {
+      final user = userProfileAsync.asData?.value;
+      if (user == null) return const AsyncValue.data(DashboardStatsModel());
 
-  // Determine artist IDs based on role
-  List<String> artistIds = [];
-  switch (user.role) {
-    case UserRole.guest:
-      artistIds = [];
-      break;
-    case UserRole.viewer:
-      if (user.artistId != null) {
-        artistIds = [user.artistId!];
+      final artists = artistsAsync.value ?? [];
+      final now = DateTime.now();
+
+      // Xác định DBA artist để loại khỏi doanh thu
+      final dbaArtist = artists
+          .where((a) => a.name.trim().toUpperCase() == 'DBA')
+          .firstOrNull;
+      final dbaId = dbaArtist?.id;
+
+      final upcoming7Days = now.add(const Duration(days: 7));
+
+      // --- Upcoming events (7 ngày tới) ---
+      final upcomingEvents = events.where((e) {
+        return e.startTime.isAfter(now) &&
+            e.startTime.isBefore(upcoming7Days);
+      }).toList();
+
+      // --- Urgent tasks (7 ngày tới, chưa có checklist HOẶC có item chưa xong) ---
+      final urgentEvents = upcomingEvents.where((e) {
+        if (user.role == UserRole.viewer) {
+          if (user.artistId == null) return false;
+          if (!e.artistIds.contains(user.artistId)) return false;
+        } else if (user.role == UserRole.editor) {
+          if (!e.artistIds.any((id) => user.managedArtistIds.contains(id))) {
+            return false;
+          }
+        }
+        if (e.checklistItems.isEmpty) return true;
+        return e.checklistItems.any((item) => !item.isCompleted);
+      }).toList();
+
+      // --- Revenue (tháng hiện tại, loại DBA) ---
+      double totalRevenue = 0;
+      double totalExpenses = 0;
+
+      for (final e in events) {
+        final isDBA = (dbaId != null && e.artistIds.contains(dbaId)) ||
+            e.title.toUpperCase().contains('DBA');
+        final isCurrentMonth =
+            e.startTime.year == now.year && e.startTime.month == now.month;
+        if (isDBA || !isCurrentMonth) continue;
+        if (e.finance == null) continue;
+
+        totalRevenue += e.finance!.revenue;
+        totalExpenses += e.finance!.totalExpenses;
       }
-      break;
-    case UserRole.editor:
-      artistIds = user.managedArtistIds;
-      break;
-    case UserRole.superEditor:
-      artistIds = []; // Will fetch all events
-      break;
-  }
 
-  try {
-    // Get upcoming events (next 7 days)
-    final upcomingEvents = await eventRepository.getUpcomingEvents(
-      artistIds: artistIds,
-      days: 7,
-    );
+      final unreadNotificationsCount = unreadCount.maybeWhen(
+        data: (count) => count,
+        orElse: () => 0,
+      );
 
-    // Get urgent tasks (same logic as urgentEventsProvider — 7 days, no checklist = urgent)
-    final allUpcoming = await eventRepository.getUpcomingEvents(
-      artistIds: artistIds,
-      days: 7,
-    );
-    final urgentEvents = allUpcoming.where((e) {
-      if (e.checklistItems.isEmpty) return true;
-      return e.checklistItems.any((item) => !item.isCompleted);
-    }).toList();
-
-    // Get revenue stats for current month
-    final revenueStats = await revenueRepository.getCurrentMonthRevenue(
-      artistIds: artistIds,
-    );
-
-    // Get unread notifications count
-    final unreadNotificationsCount = unreadCount.maybeWhen(
-      data: (count) => count,
-      orElse: () => 0,
-    );
-
-    return DashboardStatsModel(
-      totalRevenue: revenueStats.totalRevenue,
-      totalExpenses: revenueStats.totalExpenses,
-      upcomingEventsCount: upcomingEvents.length,
-      urgentTasksCount: urgentEvents.length,
-      unreadNotificationsCount: unreadNotificationsCount,
-    );
-  } catch (e) {
-    // Return empty stats on error
-    return const DashboardStatsModel();
-  }
+      return AsyncValue.data(DashboardStatsModel(
+        totalRevenue: totalRevenue,
+        totalExpenses: totalExpenses,
+        upcomingEventsCount: upcomingEvents.length,
+        urgentTasksCount: urgentEvents.length,
+        unreadNotificationsCount: unreadNotificationsCount,
+      ));
+    },
+  );
 });
 
 /// Provider for urgent events — dùng eventsStreamProvider để cập nhật realtime.

@@ -43,18 +43,32 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
   @override
   Widget build(BuildContext context) {
     final eventsAsync = ref.watch(eventsStreamProvider);
+    final artistsAsync = ref.watch(artistsStreamProvider);
     final currentUser = ref.watch(currentUserProfileProvider).value;
+
+    // Lấy tập ID của Mr Chu để lọc sự kiện
+    final mrChuIds = artistsAsync.valueOrNull
+        ?.where((a) => a.name.trim().toLowerCase().contains('mr chu'))
+        .map((a) => a.id)
+        .toSet();
+
+    // Lọc bỏ sự kiện có Mr Chu trong danh sách nghệ sĩ
+    final filteredAsync = eventsAsync.whenData((events) {
+      if (mrChuIds == null || mrChuIds.isEmpty) return events;
+      return events
+          .where((e) => e.artistIds.every((id) => !mrChuIds.contains(id)))
+          .toList();
+    });
 
     return Scaffold(
       backgroundColor: AppColors.backgroundDark,
-      // Không có FAB — Guest không tạo sự kiện
       body: SafeArea(
         child: Column(
           children: [
             _buildHeader(currentUser),
             _buildViewSwitcher(),
             Expanded(
-              child: eventsAsync.when(
+              child: filteredAsync.when(
                 data: (events) => _buildCalendarContent(events),
                 loading: () => const Center(
                   child: CircularProgressIndicator(color: AppColors.primary),
@@ -74,7 +88,7 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // HEADER — tên + badge Guest + nút đăng xuất
+  // HEADER — tên + nút profile
   // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildHeader(dynamic user) {
@@ -87,7 +101,6 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
       ),
       child: Row(
         children: [
-          // Avatar
           GestureDetector(
             onTap: () => _showProfileMenu(),
             child: CircleAvatar(
@@ -98,58 +111,28 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
                   : null,
               child: user?.photoUrl == null
                   ? Text(
-                (user?.displayName as String? ?? 'G')
-                    .substring(0, 1)
-                    .toUpperCase(),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              )
+                      (user?.displayName ?? 'G')
+                          .substring(0, 1)
+                          .toUpperCase(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    )
                   : null,
             ),
           ),
           const SizedBox(width: 12),
-
-          // Tên + badge
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  user?.displayName as String? ?? 'Guest',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                // Badge "Guest" — nhắc nhở role giới hạn
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppColors.warning.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(
-                      color: AppColors.warning.withValues(alpha: 0.4),
-                    ),
-                  ),
-                  child: const Text(
-                    'Chế độ Khách',
-                    style: TextStyle(
-                      color: AppColors.warning,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
+            child: Text(
+              user?.displayName ?? 'Guest',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
-
-          // Nút đăng xuất nhỏ gọn
           IconButton(
             onPressed: _showProfileMenu,
             icon: Container(
@@ -414,7 +397,6 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
           children: [
             Row(
               children: [
-                // Giờ hoặc badge "Cả ngày"
                 if (event.isAllDay)
                   _buildPill('Cả ngày', AppColors.primary)
                 else
@@ -427,8 +409,6 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
                         fontWeight: FontWeight.w600),
                   ),
                 const SizedBox(width: 8),
-
-                // Tiêu đề
                 Expanded(
                   child: Text(
                     event.title,
@@ -438,17 +418,8 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
                         fontWeight: FontWeight.w600),
                   ),
                 ),
-
-                // Lock icon — báo hiệu nội dung bị giới hạn
-                const SizedBox(width: 6),
-                Icon(Icons.lock_outline,
-                    size: 15,
-                    color:
-                    AppColors.textDarkSecondary.withValues(alpha: 0.6)),
               ],
             ),
-
-            // Tên nghệ sĩ
             artistsAsync.when(
               data: (artists) {
                 if (artists.isEmpty) return const SizedBox.shrink();
@@ -514,7 +485,6 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Drag handle
             Container(
               width: 40,
               height: 4,
@@ -524,23 +494,6 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
               ),
             ),
             const SizedBox(height: 20),
-
-            // Lock icon
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-                border: Border.all(
-                    color: AppColors.warning.withValues(alpha: 0.3)),
-              ),
-              child: const Icon(Icons.lock_outline,
-                  color: AppColors.warning, size: 32),
-            ),
-            const SizedBox(height: 16),
-
-            // Tiêu đề sự kiện (thông tin duy nhất được show)
             Text(
               event.title,
               textAlign: TextAlign.center,
@@ -560,38 +513,6 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
                   color: AppColors.textDarkSecondary, fontSize: 13),
             ),
             const SizedBox(height: 20),
-
-            // Thông báo giới hạn
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                    color: AppColors.warning.withValues(alpha: 0.25)),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline,
-                      size: 18,
-                      color: AppColors.warning.withValues(alpha: 0.8)),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Text(
-                      'Tài khoản Guest không có quyền xem chi tiết sự kiện. '
-                          'Liên hệ quản trị viên để được nâng cấp quyền.',
-                      style: TextStyle(
-                          color: AppColors.textDarkSecondary,
-                          fontSize: 13,
-                          height: 1.4),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Nút đóng
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
@@ -632,7 +553,6 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // User info
             Row(
               children: [
                 CircleAvatar(
@@ -640,7 +560,7 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
                   backgroundColor:
                   AppColors.warning.withValues(alpha: 0.2),
                   child: Text(
-                    (user?.displayName as String? ?? 'G')
+                    (user?.displayName ?? 'G')
                         .substring(0, 1)
                         .toUpperCase(),
                     style: const TextStyle(
@@ -655,7 +575,7 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        user?.displayName as String? ?? 'Guest',
+                        user?.displayName ?? 'Guest',
                         style: const TextStyle(
                             color: Colors.white,
                             fontSize: 17,
@@ -663,23 +583,20 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        user?.email as String? ?? '',
+                        user?.email ?? '',
                         style: const TextStyle(
                             color: AppColors.textDarkSecondary,
                             fontSize: 13),
                       ),
                       const SizedBox(height: 6),
-                      // Badge role
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color:
-                          AppColors.warning.withValues(alpha: 0.15),
+                          color: AppColors.warning.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(4),
                           border: Border.all(
-                              color: AppColors.warning
-                                  .withValues(alpha: 0.4)),
+                              color: AppColors.warning.withValues(alpha: 0.4)),
                         ),
                         child: const Text(
                           'Chế độ Khách',
@@ -697,8 +614,6 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
             const SizedBox(height: 24),
             const Divider(color: AppColors.borderDark),
             const SizedBox(height: 16),
-
-            // Đăng xuất
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -742,7 +657,7 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // CALENDAR CELL BUILDERS (copy từ CalendarScreen, giữ nguyên)
+  // CALENDAR CELL BUILDERS
   // ─────────────────────────────────────────────────────────────────────────
 
   static const double _kRowH = 65.0;
