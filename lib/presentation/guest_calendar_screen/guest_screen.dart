@@ -575,7 +575,7 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        user?.displayName ?? 'Guest',
+                        user?.displayName ?? 'Starbase',
                         style: const TextStyle(
                             color: Colors.white,
                             fontSize: 17,
@@ -589,23 +589,7 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
                             fontSize: 13),
                       ),
                       const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: AppColors.warning.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(
-                              color: AppColors.warning.withValues(alpha: 0.4)),
-                        ),
-                        child: const Text(
-                          'Chế độ Khách',
-                          style: TextStyle(
-                              color: AppColors.warning,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700),
-                        ),
-                      ),
+                      
                     ],
                   ),
                 ),
