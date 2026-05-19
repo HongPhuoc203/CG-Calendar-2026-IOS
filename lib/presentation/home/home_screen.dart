@@ -208,6 +208,14 @@ class HomeScreen extends ConsumerWidget {
                           ),
                         )
                       : null,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const CalendarScreen(),
+                      ),
+                    );
+                  },
                 ),
               ),
             ],
@@ -363,7 +371,7 @@ class HomeScreen extends ConsumerWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(
-            children: events.take(3).map((event) {
+            children: events.map((event) {
               return CompactEventCard(
                 event: event,
                 showUrgentBadge: true,
@@ -437,7 +445,7 @@ class HomeScreen extends ConsumerWidget {
                             ),
                             const SizedBox(height: 2),
                             const Text(
-                              'Nghệ sĩ nhận (60%)',
+                              'Nghệ sĩ nhận',
                               style: TextStyle(
                                 color: AppColors.textDarkSecondary,
                                 fontSize: 12,

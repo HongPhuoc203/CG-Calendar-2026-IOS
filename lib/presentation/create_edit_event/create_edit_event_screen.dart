@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
@@ -39,6 +40,7 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
   final _descriptionController = TextEditingController();
   final _locationController = TextEditingController();
   final _notesController = TextEditingController();
+  final _artistSharePercentController = TextEditingController();
 
   DateTime _startTime = DateTime.now();
   DateTime _endTime = DateTime.now().add(const Duration(hours: 1));
@@ -67,10 +69,20 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
   static const String _dba = 'DBA';
   static const int _dbaSharePercent = 0;
 
+  void _setArtistSharePercent(int value) {
+    final clamped = value.clamp(0, 100);
+    setState(() => _artistSharePercent = clamped);
+    _artistSharePercentController.text = clamped.toString();
+    _artistSharePercentController.selection = TextSelection.collapsed(
+      offset: _artistSharePercentController.text.length,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     _isEditMode = widget.event != null;
+    _artistSharePercentController.text = _artistSharePercent.toString();
 
     if (_isEditMode) {
       _loadEventData();
@@ -107,6 +119,7 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
       _revenue = event.finance!.revenue;
       _expenses = event.finance!.expenses.map((e) => e.copyWith()).toList();
       _artistSharePercent = event.finance!.artistSharePercent;
+      _artistSharePercentController.text = _artistSharePercent.toString();
     }
 
     _loadReminders();
@@ -139,6 +152,7 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
     _descriptionController.dispose();
     _locationController.dispose();
     _notesController.dispose();
+    _artistSharePercentController.dispose();
     super.dispose();
   }
 
@@ -989,6 +1003,7 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                       _artistSharePercent = 60;
                     }
                   }
+                  _artistSharePercentController.text = _artistSharePercent.toString();
                 });
               },
               selectedColor: ArtistModelX(artist).color.withValues(alpha: 0.3),
@@ -1525,106 +1540,139 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Label row
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Flexible(
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.percent,
-                                size: 16,
-                                color: AppColors.warning.withValues(alpha: 0.8),
-                              ),
-                              const SizedBox(width: 8),
-                              const Flexible(
-                                child: Text(
-                                  'Tỉ lệ nghệ sĩ nhận',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
+                        Icon(
+                          Icons.percent,
+                          size: 16,
+                          color: AppColors.warning.withValues(alpha: 0.8),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Tỉ lệ nghệ sĩ nhận',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        // Nút tăng/giảm để chỉnh đơn vị 5%
-                        Container(
-                          decoration: BoxDecoration(
-                            color: AppColors.warning.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.remove, size: 14),
-                                color: AppColors.warning,
-                                onPressed: _artistSharePercent > 0
-                                    ? () => setState(() {
-                                          _artistSharePercent = (_artistSharePercent - 5).clamp(0, 100);
-                                        })
-                                    : null,
-                                constraints: const BoxConstraints(),
-                                padding: const EdgeInsets.all(4),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    // Stepper row: [−] [input field] [%] [+]
+                    Row(
+                      children: [
+                        // Nút giảm
+                        _ShareStepButton(
+                          icon: Icons.remove,
+                          enabled: _artistSharePercent > 0,
+                          onTap: () => _setArtistSharePercent(_artistSharePercent - 5),
+                        ),
+                        const SizedBox(width: 8),
+                        // Ô nhập trực tiếp
+                        Expanded(
+                          child: Container(
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: AppColors.warning.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: AppColors.warning.withValues(alpha: 0.4),
                               ),
-                              SizedBox(
-                                width: 36,
-                                child: Text(
-                                  '$_artistSharePercent%',
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    color: AppColors.warning,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _artistSharePercentController,
+                                    keyboardType: TextInputType.number,
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.digitsOnly,
+                                      LengthLimitingTextInputFormatter(3),
+                                    ],
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: AppColors.warning,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    decoration: const InputDecoration(
+                                      border: InputBorder.none,
+                                      contentPadding: EdgeInsets.symmetric(
+                                        vertical: 10,
+                                        horizontal: 4,
+                                      ),
+                                      isDense: true,
+                                    ),
+                                    onChanged: (val) {
+                                      final parsed = int.tryParse(val);
+                                      if (parsed != null) {
+                                        final clamped = parsed.clamp(0, 100);
+                                        setState(() => _artistSharePercent = clamped);
+                                        if (clamped != parsed) {
+                                          _artistSharePercentController.text = clamped.toString();
+                                          _artistSharePercentController.selection = TextSelection.collapsed(
+                                            offset: _artistSharePercentController.text.length,
+                                          );
+                                        }
+                                      }
+                                    },
                                   ),
                                 ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.add, size: 14),
-                                color: AppColors.warning,
-                                onPressed: _artistSharePercent < 80
-                                    ? () => setState(() {
-                                          _artistSharePercent = (_artistSharePercent + 5).clamp(0, 100);
-                                        })
-                                    : null,
-                                constraints: const BoxConstraints(),
-                                padding: const EdgeInsets.all(4),
-                              ),
-                            ],
+                                const Padding(
+                                  padding: EdgeInsets.only(right: 10),
+                                  child: Text(
+                                    '%',
+                                    style: TextStyle(
+                                      color: AppColors.warning,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Nút tăng
+                        _ShareStepButton(
+                          icon: Icons.add,
+                          enabled: _artistSharePercent < 100,
+                          onTap: () => _setArtistSharePercent(_artistSharePercent + 5),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
                     // Các nút chọn nhanh
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 8,
-                      alignment: WrapAlignment.center,
+                    Row(
                       children: [30, 50, 60, 80].map((p) {
                         final isSelected = _artistSharePercent == p;
-                        return InkWell(
-                          onTap: () => setState(() => _artistSharePercent = p),
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: isSelected ? AppColors.warning : AppColors.surfaceDark,
+                        return Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 3),
+                            child: InkWell(
+                              onTap: () => _setArtistSharePercent(p),
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: isSelected ? AppColors.warning : AppColors.borderDark,
-                              ),
-                            ),
-                            child: Text(
-                              '$p%',
-                              style: TextStyle(
-                                color: isSelected ? Colors.black : Colors.white,
-                                fontSize: 12,
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: isSelected ? AppColors.warning : AppColors.surfaceDark,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: isSelected ? AppColors.warning : AppColors.borderDark,
+                                  ),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  '$p%',
+                                  style: TextStyle(
+                                    color: isSelected ? Colors.black : Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -1996,6 +2044,42 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
           ],
         );
       },
+    );
+  }
+}
+
+/// Nút tăng / giảm tỉ lệ nghệ sĩ (bước 5%)
+class _ShareStepButton extends StatelessWidget {
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const _ShareStepButton({
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.warning.withValues(alpha: enabled ? 0.15 : 0.05),
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Icon(
+            icon,
+            size: 18,
+            color: enabled
+                ? AppColors.warning
+                : AppColors.warning.withValues(alpha: 0.3),
+          ),
+        ),
+      ),
     );
   }
 }

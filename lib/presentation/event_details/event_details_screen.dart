@@ -1023,10 +1023,8 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
   Widget _buildFinanceSection({required bool isViewer}) {
     final finance = _currentEvent.finance!;
     final totalExpenses = EventFinanceX(finance).totalExpenses;
-    // Nghệ sĩ nhận 60% doanh thu sự kiện
-    final artistRevenueShare = finance.revenue * 0.6;
-    const artistShareLabel = 'Nghệ sĩ ';
-    // Thu nhập ròng phải trừ luôn phần đã chia cho nghệ sĩ
+    final artistRevenueShare = finance.revenue * (finance.artistSharePercent / 100);
+    const artistShareLabel = 'Nghệ sĩ';
     final netIncome = finance.revenue - totalExpenses - artistRevenueShare;
 
     if (isViewer) {

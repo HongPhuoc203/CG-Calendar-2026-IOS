@@ -66,15 +66,18 @@ class RevenueScreen extends ConsumerWidget {
                   final events = eventsAsync.value ?? [];
                   final artists = artistsAsync.value ?? [];
 
-                  // 1. Tìm Artist ID của DBA để loại trừ
+                  // 1. Tìm Artist ID của DBA và Mr Chu để loại trừ
                   final dbaArtist = artists.where((a) => a.name.trim().toUpperCase() == 'DBA').firstOrNull;
                   final dbaId = dbaArtist?.id;
+                  final mrChuArtist = artists.where((a) => a.name.trim().toUpperCase() == 'MR CHU').firstOrNull;
+                  final mrChuId = mrChuArtist?.id;
 
-                  // 2. Lọc sự kiện loại trừ DBA
+                  // 2. Lọc sự kiện loại trừ DBA và Mr Chu
                   final filteredEvents = events.where((e) {
-                    final isDBA = (dbaId != null && e.artistIds.contains(dbaId)) || 
+                    final isDBA = (dbaId != null && e.artistIds.contains(dbaId)) ||
                                  e.title.toUpperCase().contains('DBA');
-                    return !isDBA;
+                    final isMrChu = mrChuId != null && e.artistIds.contains(mrChuId);
+                    return !isDBA && !isMrChu;
                   }).toList();
 
                   // 3. Tính toán lại stats loại trừ DBA
@@ -164,6 +167,7 @@ class RevenueScreen extends ConsumerWidget {
                         if (artist == null) return null;
                         final name = artist.name.trim();
                         if (name.toUpperCase() == 'DBA' || artist.id == dbaId) return null;
+                        if (name.toUpperCase() == 'MR CHU' || artist.id == mrChuId) return null;
                         return RevenueByArtist(
                           artistId: entry.key,
                           artistName: name,

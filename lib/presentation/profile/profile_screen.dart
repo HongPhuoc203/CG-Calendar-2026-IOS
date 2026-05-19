@@ -179,7 +179,6 @@ class ProfileScreen extends ConsumerWidget {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              // ✅ Gọi _logout(context, ref) — không thay đổi so với cũ
               onPressed: () => _logout(context, ref),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.error,
@@ -192,8 +191,7 @@ class ProfileScreen extends ConsumerWidget {
               icon: const Icon(Icons.logout),
               label: const Text(
                 'Đăng xuất',
-                style:
-                    TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
           ),
@@ -298,13 +296,11 @@ class ProfileScreen extends ConsumerWidget {
       // Bước 4: đăng xuất Firebase (luôn chạy)
       await authService.signOut();
 
+      // Bước 5: pop toàn bộ stack về root để AuthWrapper
+      // rebuild thành LoginScreen (xử lý cả trường hợp
+      // ProfileScreen được push từ GuestCalendarScreen)
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Đã đăng xuất thành công'),
-            backgroundColor: AppColors.success,
-          ),
-        );
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } catch (e) {
       logger.e('Logout error', error: e);

@@ -155,6 +155,22 @@ class AuthService {
     }
   }
 
+  /// Xóa tài khoản Firebase Auth của người dùng hiện tại.
+  /// Gọi SAU khi đã xóa dữ liệu Firestore.
+  /// Lưu ý: Firebase yêu cầu người dùng đăng nhập gần đây;
+  /// nếu session cũ sẽ throw requires-recent-login.
+  Future<void> deleteAccount() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw const AuthFailure('Không tìm thấy người dùng hiện tại');
+    }
+    try {
+      await user.delete();
+    } catch (e) {
+      throw AuthFailure('Lỗi xóa tài khoản: $e');
+    }
+  }
+
   /// Get user-friendly error messages
   String _getAuthErrorMessage(String code) {
     switch (code) {

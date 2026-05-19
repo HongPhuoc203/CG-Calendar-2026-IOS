@@ -3,8 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/enums/user_role.dart';
+import '../../core/utils/logger.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/artists_provider.dart';
+import '../../providers/repositories_providers.dart';
+import '../../providers/services_providers.dart';
 import '../../data/models/artist_model.dart';
 
 /// Show personal information of the current logged-in user.
@@ -105,6 +108,30 @@ class PersonalInfoScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _confirmDeleteAccount(context, ref),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.error,
+                        side: const BorderSide(color: AppColors.error),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: const Icon(Icons.delete_forever_outlined),
+                      label: const Text(
+                        'Xóa tài khoản',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                 ],
               ),
             );
@@ -123,6 +150,81 @@ class PersonalInfoScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _confirmDeleteAccount(
+      BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceDark,
+        title: const Text(
+          'Xóa tài khoản?',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'Hành động này không thể hoàn tác.\n'
+          'Tài khoản và toàn bộ dữ liệu của bạn sẽ bị xóa vĩnh viễn.',
+          style: TextStyle(color: AppColors.textDarkSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Xóa vĩnh viễn'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    if (!context.mounted) return;
+
+    try {
+      final authService = ref.read(authServiceProvider);
+      final fcmService = ref.read(fcmServiceProvider);
+      final userRepo = ref.read(userRepositoryProvider);
+      final currentUser = authService.currentUser;
+
+      if (currentUser != null) {
+        try {
+          final token = fcmService.fcmToken;
+          if (token != null && token.isNotEmpty) {
+            await userRepo.unregisterFcmToken(currentUser.uid, token);
+          }
+        } catch (_) {}
+
+        await userRepo.deleteUser(currentUser.uid);
+      }
+
+      fcmService.onTokenChanged = null;
+      await authService.deleteAccount();
+
+      if (context.mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    } catch (e) {
+      logger.e('Delete account error', error: e);
+      if (context.mounted) {
+        final msg = e.toString().contains('requires-recent-login')
+            ? 'Phiên đăng nhập đã cũ. Vui lòng đăng xuất và đăng nhập lại trước khi xóa tài khoản.'
+            : 'Lỗi xóa tài khoản: $e';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
   }
 
   String _buildManagedArtistsLabel({

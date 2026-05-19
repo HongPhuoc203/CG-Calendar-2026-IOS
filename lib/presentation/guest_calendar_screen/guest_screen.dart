@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -8,6 +9,7 @@ import '../../providers/events_provider.dart';
 import '../../providers/artists_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/services_providers.dart';
+import '../profile/profile_screen.dart';
 
 /// Màn hình lịch dành riêng cho Role: Guest.
 ///
@@ -102,7 +104,10 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
       child: Row(
         children: [
           GestureDetector(
-            onTap: () => _showProfileMenu(),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ProfileScreen()),
+            ),
             child: CircleAvatar(
               radius: 20,
               backgroundColor: AppColors.surfaceDark,
@@ -134,7 +139,10 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
             ),
           ),
           IconButton(
-            onPressed: _showProfileMenu,
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ProfileScreen()),
+            ),
             icon: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
@@ -255,6 +263,15 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
   }
 
   Widget _buildCalendar(List<EventModel> events) {
+    final slotMap = _computeSlotAssignments(events);
+    final maxBars = slotMap.isEmpty ? 0 : slotMap.values.reduce(math.max) + 1;
+    final rowH = math.max(
+      _kMinRowH,
+      _kDayNumH +
+          maxBars * _kBarH +
+          (maxBars > 1 ? (maxBars - 1) * _kBarGap : 0),
+    );
+
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surfaceDark.withValues(alpha: 0.3),
@@ -268,7 +285,7 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
         selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
         calendarFormat: _calendarFormat,
         startingDayOfWeek: StartingDayOfWeek.monday,
-        rowHeight: _kRowH,
+        rowHeight: rowH,
         eventLoader: (day) => _getEventsForDay(day, events),
         onDaySelected: (selected, focused) => setState(() {
           _selectedDay = selected;
@@ -277,13 +294,13 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
         onPageChanged: (focused) => _focusedDay = focused,
         calendarBuilders: CalendarBuilders(
           defaultBuilder: (ctx, day, _) =>
-              _buildDayCell(ctx, day, events),
+              _buildDayCell(ctx, day, events, slotMap, maxBars, rowH),
           todayBuilder: (ctx, day, _) =>
-              _buildDayCell(ctx, day, events, isToday: true),
+              _buildDayCell(ctx, day, events, slotMap, maxBars, rowH, isToday: true),
           selectedBuilder: (ctx, day, _) =>
-              _buildDayCell(ctx, day, events, isSelected: true),
+              _buildDayCell(ctx, day, events, slotMap, maxBars, rowH, isSelected: true),
           outsideBuilder: (ctx, day, _) =>
-              _buildDayCell(ctx, day, events, isOutside: true),
+              _buildDayCell(ctx, day, events, slotMap, maxBars, rowH, isOutside: true),
         ),
         calendarStyle: CalendarStyle(
           markersMaxCount: 0,
@@ -644,11 +661,10 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
   // CALENDAR CELL BUILDERS
   // ─────────────────────────────────────────────────────────────────────────
 
-  static const double _kRowH = 65.0;
+  static const double _kMinRowH = 65.0;
   static const double _kDayNumH = 36.0;
   static const double _kBarH = 13.0;
   static const double _kBarGap = 2.0;
-  static const int _kMaxBars = 3;
 
   Color _barColor(EventModel event) => AppColors.artistColors[
   event.id.hashCode.abs() % AppColors.artistColors.length];
@@ -676,6 +692,39 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
     return e.isAfter(s);
   }
 
+  bool _datesOverlap(EventModel a, EventModel b) {
+    final aS = DateTime(a.startTime.year, a.startTime.month, a.startTime.day);
+    final aE = DateTime(a.endTime.year, a.endTime.month, a.endTime.day);
+    final bS = DateTime(b.startTime.year, b.startTime.month, b.startTime.day);
+    final bE = DateTime(b.endTime.year, b.endTime.month, b.endTime.day);
+    return !aE.isBefore(bS) && !bE.isBefore(aS);
+  }
+
+  /// Gán slot index ổn định cho mỗi multi-day event
+  /// để các bar thẳng hàng theo chiều ngang qua các ô trong cùng hàng tuần.
+  Map<String, int> _computeSlotAssignments(List<EventModel> allEvents) {
+    final multiDay = allEvents.where(_isMultiDay).toList()
+      ..sort((a, b) {
+        final c = a.startTime.compareTo(b.startTime);
+        return c != 0 ? c : a.id.compareTo(b.id);
+      });
+
+    final assignments = <String, int>{};
+    final slots = <List<EventModel>>[];
+
+    for (final event in multiDay) {
+      int slotIdx = 0;
+      while (slotIdx < slots.length &&
+          slots[slotIdx].any((e) => _datesOverlap(e, event))) {
+        slotIdx++;
+      }
+      if (slotIdx == slots.length) slots.add([]);
+      slots[slotIdx].add(event);
+      assignments[event.id] = slotIdx;
+    }
+    return assignments;
+  }
+
   List<EventModel> _getEventsForDay(
       DateTime day, List<EventModel> all) {
     final check = DateTime(day.year, day.month, day.day);
@@ -691,80 +740,99 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
   Widget _buildDayCell(
       BuildContext context,
       DateTime day,
-      List<EventModel> allEvents, {
+      List<EventModel> allEvents,
+      Map<String, int> slotMap,
+      int maxBars,
+      double rowH, {
         bool isToday = false,
         bool isSelected = false,
         bool isOutside = false,
       }) {
     final multiDay = allEvents
         .where((e) => _isMultiDay(e) && _dayInRange(e, day))
-        .toList()
-      ..sort((a, b) {
-        final c = a.startTime.compareTo(b.startTime);
-        return c != 0 ? c : a.id.compareTo(b.id);
-      });
+        .toList();
 
     final singleDay = allEvents
         .where((e) => !_isMultiDay(e) && isSameDay(e.startTime, day))
         .toList();
 
-    final visibleBars = multiDay.take(_kMaxBars).toList();
-    final overflow = multiDay.length - _kMaxBars;
+    // Xây dựng map slot → event cho ngày này
+    final eventsBySlot = <int, EventModel>{};
+    for (final event in multiDay) {
+      final slot = slotMap[event.id];
+      if (slot != null && slot < maxBars) {
+        eventsBySlot[slot] = event;
+      }
+    }
 
     return SizedBox(
-      height: _kRowH,
+      height: rowH,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Số ngày — với dots overlay khi có cả bars lẫn single-day events
           SizedBox(
             height: _kDayNumH,
-            child: Center(
-              child: Container(
-                width: 32,
-                height: 32,
-                alignment: Alignment.center,
-                decoration: isSelected
-                    ? const BoxDecoration(
-                    color: AppColors.primary,
-                    shape: BoxShape.circle)
-                    : isToday
-                    ? BoxDecoration(
-                    color:
-                    AppColors.primary.withValues(alpha: 0.35),
-                    shape: BoxShape.circle)
-                    : null,
-                child: Text(
-                  '${day.day}',
-                  style: TextStyle(
-                    color: isOutside
-                        ? Colors.white.withValues(alpha: 0.25)
-                        : Colors.white,
-                    fontWeight: isSelected || isToday
-                        ? FontWeight.bold
-                        : FontWeight.normal,
-                    fontSize: 16,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  alignment: Alignment.center,
+                  decoration: isSelected
+                      ? const BoxDecoration(
+                          color: AppColors.primary, shape: BoxShape.circle)
+                      : isToday
+                          ? BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.35),
+                              shape: BoxShape.circle)
+                          : null,
+                  child: Text(
+                    '${day.day}',
+                    style: TextStyle(
+                      color: isOutside
+                          ? Colors.white.withValues(alpha: 0.25)
+                          : Colors.white,
+                      fontWeight: isSelected || isToday
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                      fontSize: 16,
+                    ),
                   ),
                 ),
-              ),
+                if (singleDay.isNotEmpty && multiDay.isNotEmpty)
+                  Positioned(
+                    bottom: 1,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: singleDay
+                          .take(3)
+                          .map((_) => Container(
+                                width: 4,
+                                height: 4,
+                                margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white,
+                                ),
+                              ))
+                          .toList(),
+                    ),
+                  ),
+              ],
             ),
           ),
-          for (final event in visibleBars) ...[
-            _buildBarSlice(event, day),
-            SizedBox(height: _kBarGap),
-          ],
-          if (overflow > 0)
-            Padding(
-              padding: const EdgeInsets.only(left: 5),
-              child: Text(
-                '+$overflow',
-                style: TextStyle(
-                  color:
-                  AppColors.textDarkSecondary.withValues(alpha: 0.85),
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
+          // Bars — slot-aligned, gap đặt TRƯỚC mỗi bar trừ bar đầu tiên
+          if (multiDay.isNotEmpty)
+            for (int slot = 0; slot < maxBars; slot++) ...[
+              if (slot > 0) SizedBox(height: _kBarGap),
+              if (eventsBySlot.containsKey(slot))
+                _buildBarSlice(eventsBySlot[slot]!, day)
+              else
+                SizedBox(height: _kBarH),
+            ],
+          // Dots cho single-day events khi không có bars
           if (singleDay.isNotEmpty && multiDay.isEmpty)
             Align(
               child: Wrap(
@@ -772,13 +840,13 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
                 children: singleDay
                     .take(3)
                     .map((_) => Container(
-                  width: 5,
-                  height: 5,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.primary,
-                  ),
-                ))
+                          width: 5,
+                          height: 5,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.primary,
+                          ),
+                        ))
                     .toList(),
               ),
             ),

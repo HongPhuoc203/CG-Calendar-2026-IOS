@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -336,6 +337,17 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     final slotMap = _computeSlotAssignments(events);
     final colorMap = _computeColorAssignments(events);
 
+    // Dynamic row height: expand to fit all concurrent multi-day bars.
+    final maxBars = slotMap.isEmpty
+        ? 0
+        : slotMap.values.reduce(math.max) + 1;
+    final rowH = math.max(
+      _kMinRowH,
+      _kDayNumH +
+          maxBars * _kBarH +
+          (maxBars > 1 ? (maxBars - 1) * _kBarGap : 0),
+    );
+
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surfaceDark.withValues(alpha: 0.3),
@@ -349,7 +361,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
         calendarFormat: _calendarFormat,
         startingDayOfWeek: StartingDayOfWeek.monday,
-        rowHeight: _kRowH,
+        rowHeight: rowH,
         eventLoader: (day) => _getEventsForDay(day, events),
         onDaySelected: (selectedDay, focusedDay) {
           setState(() {
@@ -364,13 +376,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         // draw Google-Calendar-style multi-day bars inside each cell.
         calendarBuilders: CalendarBuilders(
           defaultBuilder: (context, day, _) =>
-              _buildDayCell(context, day, events, slotMap, colorMap),
+              _buildDayCell(context, day, events, slotMap, colorMap, maxBars, rowH),
           todayBuilder: (context, day, _) =>
-              _buildDayCell(context, day, events, slotMap, colorMap, isToday: true),
+              _buildDayCell(context, day, events, slotMap, colorMap, maxBars, rowH, isToday: true),
           selectedBuilder: (context, day, _) =>
-              _buildDayCell(context, day, events, slotMap, colorMap, isSelected: true),
+              _buildDayCell(context, day, events, slotMap, colorMap, maxBars, rowH, isSelected: true),
           outsideBuilder: (context, day, _) =>
-              _buildDayCell(context, day, events, slotMap, colorMap, isOutside: true),
+              _buildDayCell(context, day, events, slotMap, colorMap, maxBars, rowH, isOutside: true),
         ),
         calendarStyle: CalendarStyle(
           // Bars are rendered inside calendarBuilders — disable default dots.
@@ -627,8 +639,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
   // ─── Calendar layout constants ──────────────────────────────────────────────
 
-  /// Height of each week row in the month grid.
-  static const double _kRowH = 65.0;
+  /// Minimum height of each week row (when there are no multi-day bars).
+  static const double _kMinRowH = 65.0;
 
   /// Height reserved for the day-number circle inside each cell.
   static const double _kDayNumH = 36.0;
@@ -638,9 +650,6 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
   /// Vertical gap between stacked bars.
   static const double _kBarGap = 2.0;
-
-  /// Maximum bars rendered per cell; any additional events become "+N".
-  static const int _kMaxBars = 2;
 
   // ─── Multi-day bar helpers ───────────────────────────────────────────────────
 
@@ -680,7 +689,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     DateTime day,
     List<EventModel> allEvents,
     Map<String, int> slotMap,
-    Map<String, Color> colorMap, {
+    Map<String, Color> colorMap,
+    int maxBars,
+    double rowH, {
     bool isToday = false,
     bool isSelected = false,
     bool isOutside = false,
@@ -693,62 +704,82 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         .where((e) => !_isMultiDay(e) && isSameDay(e.startTime, day))
         .toList();
 
-    // Build a slot-index → event map for this day using the global assignment.
-    // Events assigned to a slot >= _kMaxBars are hidden (no overflow label
-    // needed — the day list below shows them all on tap).
+    // Build a slot-index → event map for this day. All slots up to maxBars
+    // are rendered so every multi-day event gets its own bar.
     final eventsBySlot = <int, EventModel>{};
     for (final event in multiDay) {
-      final slot = slotMap[event.id] ?? _kMaxBars;
-      if (slot < _kMaxBars) {
+      final slot = slotMap[event.id];
+      if (slot != null && slot < maxBars) {
         eventsBySlot[slot] = event;
       }
     }
 
-    // Layout math (must fit inside _kRowH = 65 px):
-    //   _kDayNumH (36) + slot0 (13) + gap (2) + slot1 (13) = 64 ✓
     return SizedBox(
-      height: _kRowH,
+      height: rowH,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ── Day number circle ─────────────────────────────────────────────
           SizedBox(
             height: _kDayNumH,
-            child: Center(
-              child: Container(
-                width: 32,
-                height: 32,
-                alignment: Alignment.center,
-                decoration: isSelected
-                    ? const BoxDecoration(
-                        color: AppColors.primary, shape: BoxShape.circle)
-                    : isToday
-                        ? BoxDecoration(
-                            color: AppColors.primary.withValues(alpha: 0.35),
-                            shape: BoxShape.circle)
-                        : null,
-                child: Text(
-                  '${day.day}',
-                  style: TextStyle(
-                    color: isOutside
-                        ? Colors.white.withValues(alpha: 0.25)
-                        : Colors.white,
-                    fontWeight: isSelected || isToday
-                        ? FontWeight.bold
-                        : FontWeight.normal,
-                    fontSize: 16,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  alignment: Alignment.center,
+                  decoration: isSelected
+                      ? const BoxDecoration(
+                          color: AppColors.primary, shape: BoxShape.circle)
+                      : isToday
+                          ? BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.35),
+                              shape: BoxShape.circle)
+                          : null,
+                  child: Text(
+                    '${day.day}',
+                    style: TextStyle(
+                      color: isOutside
+                          ? Colors.white.withValues(alpha: 0.25)
+                          : Colors.white,
+                      fontWeight: isSelected || isToday
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                      fontSize: 16,
+                    ),
                   ),
                 ),
-              ),
+                // Khi thanh multi-day chiếm hết không gian bên dưới,
+                // hiển thị dots nhỏ bên dưới số ngày (vẫn trong vùng circle)
+                if (singleDay.isNotEmpty && multiDay.isNotEmpty)
+                  Positioned(
+                    bottom: 1,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: singleDay
+                          .take(3)
+                          .map((_) => Container(
+                                width: 4,
+                                height: 4,
+                                margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white,
+                                ),
+                              ))
+                          .toList(),
+                    ),
+                  ),
+              ],
             ),
           ),
 
           // ── Fixed slot rows — only when this day has multi-day events.
           //    Placeholder SizedBoxes ensure events at the same slot index
           //    stay on the same vertical line across every cell in the row.
-          //    Layout: slot0(13) + gap(2) + slot1(13) = 28 → total 64 ✓
           if (multiDay.isNotEmpty)
-            for (int slot = 0; slot < _kMaxBars; slot++) ...[
+            for (int slot = 0; slot < maxBars; slot++) ...[
               if (slot > 0) SizedBox(height: _kBarGap),
             if (eventsBySlot.containsKey(slot))
               _buildBarSlice(eventsBySlot[slot]!, day,
@@ -758,7 +789,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 SizedBox(height: _kBarH), // empty placeholder keeps alignment
             ],
 
-          // ── Single-day dots (only when there are no multi-day bars) ───────
+          // ── Single-day dots (khi không có thanh multi-day, hiển thị bên dưới số) ──
           if (singleDay.isNotEmpty && multiDay.isEmpty)
             Align(
               child: Wrap(
