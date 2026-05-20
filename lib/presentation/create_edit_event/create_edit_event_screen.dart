@@ -56,7 +56,7 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
   // Finance data
   double _revenue = 0;
   List<ExpenseItem> _expenses = [];
-  int _artistSharePercent = 60; // Configurable, default 60%
+  double _artistSharePercent = 60; // Configurable, default 60%
 
   bool _isLoading = false;
   bool _isEditMode = false;
@@ -64,15 +64,19 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
 
   /// Artist name whose selection forces a specific share percentage.
   static const String _tangDuyTanName = 'Tăng Duy Tân';
-  static const int _tangDuyTanSharePercent = 80;
+  static const double _tangDuyTanSharePercent = 80;
 
   static const String _dba = 'DBA';
-  static const int _dbaSharePercent = 0;
+  static const double _dbaSharePercent = 0;
 
-  void _setArtistSharePercent(int value) {
-    final clamped = value.clamp(0, 100);
+  /// Hiển thị số lẻ nếu có, ví dụ: 47.8 → "47.8", 60.0 → "60"
+  String _fmtPct(double v) =>
+      v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(1);
+
+  void _setArtistSharePercent(double value) {
+    final clamped = value.clamp(0.0, 100.0);
     setState(() => _artistSharePercent = clamped);
-    _artistSharePercentController.text = clamped.toString();
+    _artistSharePercentController.text = _fmtPct(clamped);
     _artistSharePercentController.selection = TextSelection.collapsed(
       offset: _artistSharePercentController.text.length,
     );
@@ -82,7 +86,7 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
   void initState() {
     super.initState();
     _isEditMode = widget.event != null;
-    _artistSharePercentController.text = _artistSharePercent.toString();
+    _artistSharePercentController.text = _fmtPct(_artistSharePercent);
 
     if (_isEditMode) {
       _loadEventData();
@@ -118,8 +122,8 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
     if (event.finance != null) {
       _revenue = event.finance!.revenue;
       _expenses = event.finance!.expenses.map((e) => e.copyWith()).toList();
-      _artistSharePercent = event.finance!.artistSharePercent;
-      _artistSharePercentController.text = _artistSharePercent.toString();
+      _artistSharePercent = (event.finance!.artistSharePercent as num).toDouble();
+      _artistSharePercentController.text = _fmtPct(_artistSharePercent);
     }
 
     _loadReminders();
@@ -1003,7 +1007,7 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                       _artistSharePercent = 60;
                     }
                   }
-                  _artistSharePercentController.text = _artistSharePercent.toString();
+                  _artistSharePercentController.text = _fmtPct(_artistSharePercent);
                 });
               },
               selectedColor: ArtistModelX(artist).color.withValues(alpha: 0.3),
@@ -1586,10 +1590,10 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                                 Expanded(
                                   child: TextField(
                                     controller: _artistSharePercentController,
-                                    keyboardType: TextInputType.number,
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                     inputFormatters: [
-                                      FilteringTextInputFormatter.digitsOnly,
-                                      LengthLimitingTextInputFormatter(3),
+                                      FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
+                                      LengthLimitingTextInputFormatter(6),
                                     ],
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(
@@ -1606,12 +1610,12 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                                       isDense: true,
                                     ),
                                     onChanged: (val) {
-                                      final parsed = int.tryParse(val);
+                                      final parsed = double.tryParse(val);
                                       if (parsed != null) {
-                                        final clamped = parsed.clamp(0, 100);
+                                        final clamped = parsed.clamp(0.0, 100.0);
                                         setState(() => _artistSharePercent = clamped);
                                         if (clamped != parsed) {
-                                          _artistSharePercentController.text = clamped.toString();
+                                          _artistSharePercentController.text = _fmtPct(clamped);
                                           _artistSharePercentController.selection = TextSelection.collapsed(
                                             offset: _artistSharePercentController.text.length,
                                           );
@@ -1647,7 +1651,7 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                     const SizedBox(height: 12),
                     // Các nút chọn nhanh
                     Row(
-                      children: [30, 50, 60, 80].map((p) {
+                      children: <double>[30, 50, 60, 80].map((p) {
                         final isSelected = _artistSharePercent == p;
                         return Expanded(
                           child: Padding(

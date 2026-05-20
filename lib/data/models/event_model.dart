@@ -66,9 +66,9 @@ class EventFinance with _$EventFinance {
   const factory EventFinance({
     @Default(0) double revenue, // Doanh thu
     @Default([]) List<ExpenseItem> expenses, // Chi phí
-    /// Artist revenue share percentage. Range: 30–80, step 5. Defaults to 60.
+    /// Artist revenue share percentage. Supports decimals (e.g. 47.8). Defaults to 60.
     /// Backward-compatible: existing Firestore docs without this field read as 60.
-    @Default(60) int artistSharePercent,
+    @Default(60.0) double artistSharePercent,
   }) = _EventFinance;
 
   factory EventFinance.fromJson(Map<String, dynamic> json) =>
@@ -93,7 +93,7 @@ extension EventFinanceFirestoreX on EventFinance {
               .toList() ??
           [],
       // Backward-compatible: old docs without the field default to 60
-      artistSharePercent: (data['artistSharePercent'] as num?)?.toInt() ?? 60,
+      artistSharePercent: (data['artistSharePercent'] as num?)?.toDouble() ?? 60.0,
     );
   }
 }
