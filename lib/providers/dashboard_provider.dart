@@ -230,12 +230,17 @@ final selectedRevenueMonthProvider = StateProvider<DateTime>((ref) {
   return DateTime.now();
 });
 
+// Filter
+final selectedRevenueArtistIdProvider = StateProvider<String?>((ref) => null);
 /// Provider for revenue statistics based on time frame
 final revenueStatsProvider = FutureProvider.autoDispose<RevenueStatsModel>((ref) async {
   final revenueRepository = ref.watch(revenueRepositoryProvider);
   final userProfileAsync = ref.watch(currentUserProfileProvider);
   final timeFrame = ref.watch(selectedRevenueTimeFrameProvider);
   final selectedMonth = ref.watch(selectedRevenueMonthProvider);
+
+  // filter
+  final selectedArtistId = ref.watch(selectedRevenueArtistIdProvider);
 
   final user = userProfileAsync.asData?.value;
   if (user == null) {
@@ -257,6 +262,19 @@ final revenueStatsProvider = FutureProvider.autoDispose<RevenueStatsModel>((ref)
     case UserRole.superEditor:
       artistIds = [];
       break;
+  }
+
+  // filter artist id
+  if (selectedArtistId != null) {
+    if (user.role == UserRole.superEditor) {
+      // Admin có quyền lọc bất kỳ nghệ sĩ nào
+      artistIds = [selectedArtistId];
+    } else if (user.role == UserRole.editor) {
+      // Editor chỉ được lọc nếu nghệ sĩ đó nằm trong danh sách được quản lý
+      if (user.managedArtistIds.contains(selectedArtistId)) {
+        artistIds = [selectedArtistId];
+      }
+    }
   }
 
   switch (timeFrame) {

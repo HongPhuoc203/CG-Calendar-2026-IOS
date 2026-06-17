@@ -165,7 +165,7 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
       context: context,
       initialDate: isStart ? _startTime : _endTime,
       firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
+      lastDate: DateTime(DateTime.now().year + 10),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -1571,7 +1571,7 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                         _ShareStepButton(
                           icon: Icons.remove,
                           enabled: _artistSharePercent > 0,
-                          onTap: () => _setArtistSharePercent(_artistSharePercent - 5),
+                          onTap: () => _setArtistSharePercent(_artistSharePercent - 1),
                         ),
                         const SizedBox(width: 8),
                         // Ô nhập trực tiếp
@@ -1592,7 +1592,7 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                                     controller: _artistSharePercentController,
                                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                     inputFormatters: [
-                                      FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
+                                      FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
                                       LengthLimitingTextInputFormatter(6),
                                     ],
                                     textAlign: TextAlign.center,
@@ -1610,7 +1610,7 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                                       isDense: true,
                                     ),
                                     onChanged: (val) {
-                                      final parsed = double.tryParse(val);
+                                      final parsed = double.tryParse(val.replaceAll(',', '.'));
                                       if (parsed != null) {
                                         final clamped = parsed.clamp(0.0, 100.0);
                                         setState(() => _artistSharePercent = clamped);
@@ -1644,7 +1644,7 @@ class _CreateEditEventScreenState extends ConsumerState<CreateEditEventScreen> {
                         _ShareStepButton(
                           icon: Icons.add,
                           enabled: _artistSharePercent < 100,
-                          onTap: () => _setArtistSharePercent(_artistSharePercent + 5),
+                          onTap: () => _setArtistSharePercent(_artistSharePercent + 1),
                         ),
                       ],
                     ),

@@ -22,6 +22,10 @@ class RevenueScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedTimeFrame = ref.watch(selectedRevenueTimeFrameProvider);
     final selectedMonth = ref.watch(selectedRevenueMonthProvider);
+
+    // Filter
+    final selectedArtistId = ref.watch(selectedRevenueArtistIdProvider);
+    
     final revenueStats = ref.watch(revenueStatsProvider);
     final eventsAsync = ref.watch(eventsStreamProvider);
     final artistsAsync = ref.watch(artistsStreamProvider);
@@ -52,6 +56,10 @@ class RevenueScreen extends ConsumerWidget {
             if (!isEditor || hasRevenueAccess) ...[
             // Time Frame Selector
             _buildTimeFrameSelector(context, ref, selectedTimeFrame, selectedMonth),
+    
+            // Artist Selector bo qua viewer
+            if (!isViewer)
+              _buildArtistFilter(ref, artistsAsync, currentUser, selectedArtistId),
 
             // Content
             Expanded(
@@ -77,7 +85,9 @@ class RevenueScreen extends ConsumerWidget {
                     final isDBA = (dbaId != null && e.artistIds.contains(dbaId)) ||
                                  e.title.toUpperCase().contains('DBA');
                     final isMrChu = mrChuId != null && e.artistIds.contains(mrChuId);
-                    return !isDBA && !isMrChu;
+
+                    final matchesArtistFilter = selectedArtistId == null || e.artistIds.contains(selectedArtistId);
+                    return !isDBA && !isMrChu && matchesArtistFilter;
                   }).toList();
 
                   // 3. Tính toán lại stats loại trừ DBA
@@ -206,6 +216,81 @@ class RevenueScreen extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildArtistFilter(
+    WidgetRef ref,
+    AsyncValue<List<ArtistModel>> artistsAsync,
+    dynamic currentUser,
+    String? selectedArtistId,
+  ) {
+    return artistsAsync.maybeWhen(
+      data: (allArtists) {
+        // Loại bỏ DBA và MR CHU khỏi danh sách bộ lọc view chung
+        final allowedArtists = allArtists.where((a) {
+          final name = a.name.trim().toUpperCase();
+          if (name == 'DBA' || name == 'MR CHU') return false;
+          
+          // Phân quyền: Nếu user là Editor, chỉ cho hiển thị nghệ sĩ họ quản lý
+          if (currentUser?.role == UserRole.editor) {
+            return currentUser?.managedArtistIds?.contains(a.id) == true;
+          }
+          return true;
+        }).toList();
+
+        return Container(
+          height: 38,
+          margin: const EdgeInsets.only(bottom: 8, top: 4),
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: allowedArtists.length + 1, // +1 cho nút "Tất cả" mặc định
+            itemBuilder: (context, index) {
+              final isAllButton = index == 0;
+              final artist = isAllButton ? null : allowedArtists[index - 1];
+              final isSelected = isAllButton 
+                  ? selectedArtistId == null 
+                  : selectedArtistId == artist?.id;
+              
+              final label = isAllButton ? 'Tất cả nghệ sĩ' : artist!.name;
+
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: InkWell(
+                  onTap: () {
+                    // Cập nhật state provider khi click chọn nghệ sĩ
+                    ref.read(selectedRevenueArtistIdProvider.notifier).state = 
+                        isAllButton ? null : artist!.id;
+                  },
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: isSelected ? AppColors.primary.withOpacity(0.2) : AppColors.surfaceDark,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isSelected ? AppColors.primary : AppColors.borderDark,
+                        width: 1,
+                      ),
+                    ),
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        color: isSelected ? AppColors.primary : AppColors.textDarkSecondary,
+                        fontSize: 12,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
+      orElse: () => const SizedBox.shrink(),
     );
   }
 
