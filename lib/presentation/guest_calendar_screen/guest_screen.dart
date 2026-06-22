@@ -48,17 +48,23 @@ class _GuestCalendarScreenState extends ConsumerState<GuestCalendarScreen> {
     final artistsAsync = ref.watch(artistsStreamProvider);
     final currentUser = ref.watch(currentUserProfileProvider).value;
 
-    // Lấy tập ID của Mr Chu để lọc sự kiện
-    final mrChuIds = artistsAsync.valueOrNull
-        ?.where((a) => a.name.trim().toLowerCase().contains('mr chu'))
+    // Danh sách các từ khóa nghệ sĩ cần ẩn khỏi lịch Guest
+    final blockedKeywords = ['mr chu', 'tăng duy tân', 'chi pu'];
+
+    // Lấy tập hợp ID của tất cả các nghệ sĩ bị chặn dựa theo danh sách từ khóa
+    final blockedArtistIds = artistsAsync.valueOrNull
+        ?.where((a) {
+          final artistNameLower = a.name.trim().toLowerCase();
+          return blockedKeywords.any((keyword) => artistNameLower.contains(keyword));
+        })
         .map((a) => a.id)
         .toSet();
 
-    // Lọc bỏ sự kiện có Mr Chu trong danh sách nghệ sĩ
+    // Lọc bỏ toàn bộ sự kiện có chứa ít nhất một nghệ sĩ bị chặn
     final filteredAsync = eventsAsync.whenData((events) {
-      if (mrChuIds == null || mrChuIds.isEmpty) return events;
+      if (blockedArtistIds == null || blockedArtistIds.isEmpty) return events;
       return events
-          .where((e) => e.artistIds.every((id) => !mrChuIds.contains(id)))
+          .where((e) => e.artistIds.every((id) => !blockedArtistIds.contains(id)))
           .toList();
     });
 
